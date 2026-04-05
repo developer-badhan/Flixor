@@ -1,0 +1,73 @@
+# ==============================
+# 🗄️ Environment Variables
+# ==============================
+.env
+.env.local
+.env.development
+.env.production
+
+# ==============================
+# 📦 Node.js (Frontend - React/Vite)
+# ==============================
+node_modules/
+dist/
+build/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==============================
+# ⚛️ React / Vite
+# ==============================
+.vscode/
+.idea/
+.DS_Store
+
+# ==============================
+# 🐹 Go (Gin Backend)
+# ==============================
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+app
+
+# Build output
+/bin/
+/build/
+
+# Go workspace
+go.work
+go.work.sum
+
+# ==============================
+# 🧪 Test & Coverage
+# ==============================
+coverage.out
+*.test
+
+# ==============================
+# 🗄️ MongoDB (Local files)
+# ==============================
+/data/db/
+
+# ==============================
+# 🔐 Logs
+# ==============================
+logs/
+*.log
+
+# ==============================
+# 🚀 OS Files
+# ==============================
+Thumbs.db
+.DS_Store
+
+# ==============================
+# 🧠 Optional (if using Docker later)
+# ==============================
+docker-compose.override.yml
