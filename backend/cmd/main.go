@@ -30,7 +30,7 @@ func main() {
 	 * Creates Gin engine with all routes registered.
 	 * We pass db here so future route groups can receive it.
 	*/
-	r := router.New()
+	r := router.New(db, cfg)
 
 	/** 
 	 * Step 4: Configure the HTTP server 
