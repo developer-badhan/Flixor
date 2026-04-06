@@ -1,0 +1,15 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/main.exe ./cmd/main.go"
+  bin = "tmp/main.exe"
+  full_bin = "tmp/main.exe"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "vendor"]
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true

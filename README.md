@@ -91,6 +91,8 @@ backend/
 │── pkg/                     # Reusable utilities
 │   ├── utils/
 │   └── validator/
+│ 
+│── .air.tomol              # Automatic restarting the server     
 ```
 
 ---
@@ -205,7 +207,8 @@ MOVIE_API_BASE_URL=https://archive.org/advancedsearch.php
 git clone https://github.com/developer-badhan/Flixor.git
 cd backend
 go mod tidy
-go run cmd/main.go
+go run cmd/main.go # Production 
+go run github.com/air-verse/air@latest -c .air.toml # Development
 ```
 
 ---

@@ -40,6 +40,7 @@ func New() *gin.Engine {
 func registerHealthRoutes(engine *gin.Engine) {
 	engine.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
+			"message" : "Gin Web server is running",
 			"status":    "ok",
 			"service":   "flixor-api",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
