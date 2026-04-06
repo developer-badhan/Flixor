@@ -5,6 +5,8 @@
 .env.local
 .env.development
 .env.production
+.env.*
+!.env.example
 
 # ==============================
 # 📦 Node.js (Frontend - React/Vite)
@@ -23,7 +25,7 @@ pnpm-debug.log*
 # ==============================
 .vscode/
 .idea/
-.DS_Store
+*.swp
 
 # ==============================
 # 🐹 Go (Gin Backend)
@@ -34,6 +36,9 @@ pnpm-debug.log*
 *.dll
 *.so
 *.dylib
+*.out
+/bin/
+/tmp/
 app
 
 # Build output
@@ -71,3 +76,7 @@ Thumbs.db
 # 🧠 Optional (if using Docker later)
 # ==============================
 docker-compose.override.yml
+
+
+# Go toolchain
+vendor/

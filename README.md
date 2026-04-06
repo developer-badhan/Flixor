@@ -202,7 +202,7 @@ MOVIE_API_BASE_URL=https://archive.org/advancedsearch.php
 ## 🔧 Backend Setup
 
 ```bash
-git clone https://github.com/your-username/flixor.git
+git clone https://github.com/developer-badhan/Flixor.git
 cd backend
 go mod tidy
 go run cmd/main.go
@@ -262,6 +262,3 @@ go build -o app cmd/main.go
 
 ---
 
-# 👨‍💻 Author
-
-Built with focus on learning backend deeply and building production-ready systems.
