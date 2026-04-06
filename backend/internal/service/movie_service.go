@@ -13,7 +13,6 @@ import (
 )
 
 // Interface
-
 /** 
  * MovieService defines the business logic for movie-related operations.
  * It abstracts away the details of data fetching and storage, allowing
@@ -21,6 +20,7 @@ import (
  * The service layer is where we enforce business rules and data transformations.
 */
 type MovieService interface {
+
 	// SyncMovies fetches movies from Internet Archive and upserts them into MongoDB.
 	SyncMovies(ctx context.Context, rows, page int) (int, error)
 
@@ -31,9 +31,7 @@ type MovieService interface {
 	GetMovieByID(ctx context.Context, id string) (*model.Movie, error)
 }
 
-
 // Concrete implementation
-
 /** *
 * movieService is the concrete implementation of MovieService.
 * It has a dependency on MovieRepository, which it uses to interact with the database.
@@ -49,7 +47,6 @@ func NewMovieService(repo repository.MovieRepository) MovieService {
 }
 
 // Method implementations
-
 /**
  * SyncMovies is the core ingestion pipeline:
  *  1. Fetch raw docs from Internet Archive
@@ -58,7 +55,7 @@ func NewMovieService(repo repository.MovieRepository) MovieService {
  *  It returns the number of movies synced so the caller can log/report it.
  */
 func (s *movieService) SyncMovies(ctx context.Context, rows, page int) (int, error) {
-	// Clamp rows to a sane range to avoid hammering IA.
+	// Clamp inputs
 	if rows <= 0 || rows > 100 {
 		rows = 50
 	}
@@ -66,6 +63,7 @@ func (s *movieService) SyncMovies(ctx context.Context, rows, page int) (int, err
 		page = 1
 	}
 
+	// Fetch from Internet Archive
 	iaDocs, err := utils.FetchMoviesFromArchive(rows, page)
 	if err != nil {
 		return 0, fmt.Errorf("movie service: fetch from archive: %w", err)
@@ -92,6 +90,7 @@ func (s *movieService) SyncMovies(ctx context.Context, rows, page int) (int, err
 		})
 	}
 
+	// Upsert into MongoDB
 	if err := s.repo.BulkUpsert(ctx, movies); err != nil {
 		return 0, fmt.Errorf("movie service: bulk upsert: %w", err)
 	}
@@ -107,7 +106,7 @@ func (s *movieService) SyncMovies(ctx context.Context, rows, page int) (int, err
  *  - Max limit of 100 to prevent abuse
 */
 func (s *movieService) GetMovies(ctx context.Context, page, limit int) ([]model.Movie, int64, error) {
-	// Sanitise pagination inputs
+	// Sanitize inputs
 	if page <= 0 {
 		page = 1
 	}
@@ -115,17 +114,32 @@ func (s *movieService) GetMovies(ctx context.Context, page, limit int) ([]model.
 		limit = 20
 	}
 
-	// Calculate how many documents to skip based on the page and limit
+	// Step 1: Check if DB is empty
+	total, err := s.repo.CountAll(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("movie service: count movies: %w", err)
+	}
+
+	// Step 2: Lazy sync if empty
+	if total == 0 {
+		_, err := s.SyncMovies(ctx, 50, 1)
+		if err != nil {
+			return nil, 0, fmt.Errorf("movie service: initial sync failed: %w", err)
+		}
+
+		// Re-count after sync
+		total, err = s.repo.CountAll(ctx)
+		if err != nil {
+			return nil, 0, fmt.Errorf("movie service: count after sync failed: %w", err)
+		}
+	}
+
+	// Step 3: Fetch paginated data
 	skip := int64((page - 1) * limit)
 
 	movies, err := s.repo.FindAll(ctx, skip, int64(limit))
 	if err != nil {
 		return nil, 0, fmt.Errorf("movie service: get movies: %w", err)
-	}
-
-	total, err := s.repo.CountAll(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("movie service: count movies: %w", err)
 	}
 
 	return movies, total, nil
@@ -159,6 +173,6 @@ func (s *movieService) GetMovieByID(ctx context.Context, id string) (*model.Movi
 
 // Sentinel errors — typed errors the handler can check with errors.Is()
 var (
-	ErrInvalidID    = fmt.Errorf("invalid movie id format")
+	ErrInvalidID     = fmt.Errorf("invalid movie id format")
 	ErrMovieNotFound = fmt.Errorf("movie not found")
 )
