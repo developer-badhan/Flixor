@@ -1,84 +1,72 @@
 package main
 
 import (
-	"context"
 	"log"
-	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/developer-badhan/Flixor/config"
+	"github.com/developer-badhan/Flixor/internal/handler"
+	"github.com/developer-badhan/Flixor/internal/repository"
+	"github.com/developer-badhan/Flixor/internal/service"
 	"github.com/developer-badhan/Flixor/internal/router"
+
+	"github.com/joho/godotenv"
 )
 
+/** 
+ * Main entry point for the Flixor backend server.
+ * 
+ * Steps:
+ * 1. Load environment variables from .env file (if exists).
+ * 2. Load application configuration.
+ * 3. Connect to MongoDB and defer disconnection.
+ * 4. Initialize repositories for users and movies.
+ * 5. Initialize services for authentication and movie management
+ * 6. Initialize HTTP handlers for auth and movies.
+ * 7. Set up the Gin router with the handlers and JWT middleware
+ * 8. Start the HTTP server on the specified port.
+ * 
+ * Note: The server will log a message when it starts and if it fails to start.
+*/
 func main() {
+	// 1. Load environment variables 
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, reading from OS environment")
+	}
 
-	// Step 1: Load config 
+	// 2. Load config 
 	cfg := config.Load()
 
-	// Step 2: Connect to MongoDB 
+	// 3. Connect to MongoDB 
 	db := config.ConnectDB(cfg)
+	log.Println("✅ Connected to MongoDB")
 
 	// Disconnect cleanly when main() returns for any reason.
-	// defer runs even on panic — connection is always released.
 	defer db.Disconnect()
 
-	/**
-	 * Step 3: Build the router 
-	 * Creates Gin engine with all routes registered.
-	 * We pass db here so future route groups can receive it.
-	*/
-	r := router.New(db, cfg)
+	// 3. Repositories 
+	userRepo  := repository.NewUserRepository(db)
+	movieRepo := repository.NewMovieRepository(db.Database)
 
-	/** 
-	 * Step 4: Configure the HTTP server 
-	 * We configure net/http.Server explicitly rather than calling
-	 * r.Run() so we can set timeouts. r.Run() has no timeout support
-	 * which is unsafe in production — slow clients can hold connections open forever.
-	*/
-	server := &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      r,
-		ReadTimeout:  10 * time.Second,  // max time to read the full request
-		WriteTimeout: 10 * time.Second,  // max time to write the full response
-		IdleTimeout:  60 * time.Second,  // max time to keep idle connections alive
+	// 4. Services 
+	authSvc  := service.NewAuthService(userRepo, cfg)
+	movieSvc := service.NewMovieService(movieRepo)
+
+	// 5. Handlers 
+	authHandler  := handler.NewAuthHandler(authSvc)
+	movieHandler := handler.NewMovieHandler(movieSvc)
+
+	// 6. Router 
+	r := router.SetupRouter(authHandler, movieHandler, cfg.JWTSecret)
+
+	// 7. Start server 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "5000"
 	}
 
-	/** 
-	 * Step 5: Start server in a goroutine 
-	 * Running in a goroutine lets main() continue to the shutdown
-	 * listener below. If we called server.ListenAndServe() directly,
-	 * main() would block here and never reach the graceful shutdown logic.
-	*/
-	go func() {
-		log.Printf("Flixor API running on port %s (env: %s)", cfg.Port, cfg.AppEnv)
-
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed to start: %v", err)
-		}
-	}()
-
-	/** 
-	 * Step 6: Graceful shutdown 
-	 * Block here until the OS sends SIGINT (Ctrl+C) or SIGTERM (Docker stop).
-	 * Without this, Ctrl+C would kill the process instantly — any in-flight
-	 * requests would be cut off mid-response.
-	*/
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	log.Println("Shutdown signal received — draining connections...")
-
-	// Give in-flight requests 5 seconds to finish before forcing shutdown.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("Forced shutdown due to timeout: %v", err)
+	log.Printf("🚀 Flixor server starting on :%s", port)
+	if err := r.Run(":" + port); err != nil {
+		log.Fatalf("Server failed to start: %v", err)
 	}
-
-	log.Println("Server stopped cleanly")
 }
