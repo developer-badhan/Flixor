@@ -21,21 +21,24 @@ type IASearchResponse struct {
 }
 
 type IAResponseBody struct {
-	NumFound int      `json:"numFound"`
-	Start    int      `json:"start"`
-	Docs     []IADoc  `json:"docs"`
+	NumFound int     `json:"numFound"`
+	Start    int     `json:"start"`
+	Docs     []IADoc `json:"docs"`
 }
 
-// IADoc is one movie entry from Internet Archive.
-// IA returns some fields as a string OR []string depending on the item,
-// so Subject and Creator use json.RawMessage for safe parsing.
+/**
+ * IADoc is one movie entry from Internet Archive.
+ * IA returns some fields as a string OR []string depending on the item,
+ * so Subject and Creator use json.RawMessage for safe parsing.
+*/
 type IADoc struct {
 	Identifier  string          `json:"identifier"`
 	Title       string          `json:"title"`
 	Description string          `json:"description"`
-	Year        string          `json:"year"`
-	Subject     json.RawMessage `json:"subject"`  // string or []string
-	Creator     json.RawMessage `json:"creator"`  // string or []string
+	// 
+	Year        json.RawMessage `json:"year"`
+	Subject     json.RawMessage `json:"subject"`  
+	Creator     json.RawMessage `json:"creator"`  
 }
 
 // IAMovie is the cleaned, normalised version we hand back to the service.
@@ -91,7 +94,7 @@ func FetchMoviesFromArchive(rows, page int) ([]IAMovie, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("archive fetch: unexpected status %d", resp.StatusCode)
+		return nil, fmt.Errorf("archive fetch: unexpected status %d from %s", resp.StatusCode, fullURL)
 	}
 
 	var iaResp IASearchResponse
@@ -118,16 +121,49 @@ func FetchMoviesFromArchive(rows, page int) ([]IAMovie, error) {
  * Note: IA's stream URL pattern is a best guess based on observed items and may not work for all entries.
 */
 func normalise(doc IADoc) IAMovie {
+	desc := strings.TrimSpace(doc.Description)
+
+	// Optional safety: trim very long descriptions (frontend friendly)
+	if len(desc) > 500 {
+		desc = desc[:500]
+	}
+
 	return IAMovie{
 		Identifier:   doc.Identifier,
 		Title:        strings.TrimSpace(doc.Title),
-		Description:  strings.TrimSpace(doc.Description),
-		Year:         doc.Year,
+		Description:  desc,
+		Year:         parseYear(doc.Year),
 		Genres:       parseStringOrSlice(doc.Subject),
 		Director:     firstOf(parseStringOrSlice(doc.Creator)),
 		ThumbnailURL: fmt.Sprintf("https://archive.org/services/img/%s", doc.Identifier),
 		StreamURL:    fmt.Sprintf("https://archive.org/download/%s/%s.mp4", doc.Identifier, doc.Identifier),
 	}
+}
+
+func parseYear(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+
+	// Try string
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return strings.TrimSpace(s)
+	}
+
+	// Try integer
+	var n int
+	if err := json.Unmarshal(raw, &n); err == nil {
+		return fmt.Sprintf("%d", n)
+	}
+
+	// Try float (some APIs send 2014.0)
+	var f float64
+	if err := json.Unmarshal(raw, &f); err == nil {
+		return fmt.Sprintf("%.0f", f)
+	}
+
+	return ""
 }
 
 /**
@@ -136,7 +172,7 @@ func normalise(doc IADoc) IAMovie {
 */
 func parseStringOrSlice(raw json.RawMessage) []string {
 	if len(raw) == 0 {
-		return nil
+		return []string{} 
 	}
 
 	// Try array first
@@ -151,7 +187,7 @@ func parseStringOrSlice(raw json.RawMessage) []string {
 		return []string{s}
 	}
 
-	return nil
+	return []string{} 
 }
 
 // firstOf returns the first element of a slice, or empty string if empty.
