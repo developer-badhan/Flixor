@@ -26,9 +26,12 @@ type Config struct {
  * Call this once in main.go at startup - pass the result everywhere.
  */
 func Load() *Config {
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found reading from the system environment")
-	}
+    // Try to load .env
+    if err := godotenv.Load(".env"); err != nil {
+        log.Fatalf("❌ Failed to load .env file: %v", err)
+    } else {
+        log.Println("✅ Successfully loaded .env file")
+    }
 
 	jwtExpiry, err := strconv.Atoi(getEnv("JWT_EXPIRY_HOURS", "24"))
 	if err != nil {
@@ -40,7 +43,7 @@ func Load() *Config {
 		AppEnv:         getEnv("APP_ENV", "development"),
 		MongoURI:       getEnv("MONGO_URI", ""),
 		DBName:         getEnv("DB_NAME", "flixor"),
-		JWTSecret:      getEnv("JWTSECRET", ""),
+		JWTSecret:      getEnv("JWT_SECRET", ""),
 		JWTExpiryHours: jwtExpiry,
 	}
 
