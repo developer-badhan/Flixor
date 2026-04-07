@@ -13,12 +13,12 @@ import (
 )
 
 // Interface
-/** 
+/**
  * MovieService defines the business logic for movie-related operations.
  * It abstracts away the details of data fetching and storage, allowing
  * handlers to call high-level methods without worrying about implementation.
  * The service layer is where we enforce business rules and data transformations.
-*/
+ */
 type MovieService interface {
 
 	// SyncMovies fetches movies from Internet Archive and upserts them into MongoDB.
@@ -36,7 +36,7 @@ type MovieService interface {
 * movieService is the concrete implementation of MovieService.
 * It has a dependency on MovieRepository, which it uses to interact with the database.
 * The service layer should not know about HTTP or request/response details — it just provides methods that handlers can call.
-*/
+ */
 type movieService struct {
 	repo repository.MovieRepository
 }
@@ -104,7 +104,7 @@ func (s *movieService) SyncMovies(ctx context.Context, rows, page int) (int, err
  * Business rules enforced here:
  *  - Default page = 1, limit = 20 if invalid values provided
  *  - Max limit of 100 to prevent abuse
-*/
+ */
 func (s *movieService) GetMovies(ctx context.Context, page, limit int) ([]model.Movie, int64, error) {
 	// Sanitize inputs
 	if page <= 0 {
@@ -173,6 +173,5 @@ func (s *movieService) GetMovieByID(ctx context.Context, id string) (*model.Movi
 
 // Sentinel errors — typed errors the handler can check with errors.Is()
 var (
-	ErrInvalidID     = fmt.Errorf("invalid movie id format")
-	ErrMovieNotFound = fmt.Errorf("movie not found")
+	ErrInvalidID = fmt.Errorf("invalid movie id format")
 )
