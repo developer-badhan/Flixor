@@ -14,10 +14,11 @@ import (
  * All dependencies (handlers) are injected — the router itself has no business logic.
  */
 func SetupRouter(
-	authHandler *handler.AuthHandler,
-	movieHandler *handler.MovieHandler,
-	streamHandler *handler.StreamHandler,
-	jwtSecret string,
+	authHandler        *handler.AuthHandler,
+	movieHandler       *handler.MovieHandler,
+	streamHandler      *handler.StreamHandler,
+	interactionHandler *handler.InteractionHandler,
+	jwtSecret          string,
 ) *gin.Engine {
 	r := gin.New()
 
@@ -67,17 +68,18 @@ func SetupRouter(
 
 	}
 
-	// Protected routes 
-	protected := v1.Group("/user")
-	protected.Use(middleware.Auth(jwtSecret))
+	// Interaction routes
+	interactions := v1.Group("/interactions")
+	interactions.Use(middleware.Auth(jwtSecret))
 	{
-		// protected.GET("/watchlist", userHandler.GetWatchlist)
-		// protected.POST("/watchlist/:id", userHandler.AddToWatchlist)
-		// protected.DELETE("/watchlist/:id", userHandler.RemoveFromWatchlist)
-		// protected.POST("/like/:id", userHandler.LikeMovie)
-		// protected.POST("/dislike/:id", userHandler.DislikeMovie)
-		// protected.GET("/history", userHandler.GetWatchHistory)
+		interactions.GET("/watchlist", interactionHandler.GetWatchlist)
+		interactions.POST("/watchlist/:id", interactionHandler.AddToWatchlist)
+		interactions.DELETE("/watchlist/:id", interactionHandler.RemoveFromWatchlist)
+		interactions.POST("/like/:id", interactionHandler.ReactToMovie)
+		interactions.POST("/dislike/:id", interactionHandler.ReactToMovie)
+		interactions.GET("/history", interactionHandler.GetHistory)
 	}
+
 
 	return r
 }
