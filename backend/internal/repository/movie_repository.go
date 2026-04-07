@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -16,7 +17,7 @@ import (
 
 // Interface — the service depends on this, never on the concrete struct.
 
-/** 
+/**
  * MovieRepository defines the methods for interacting with movie data in MongoDB.
  * The service layer depends on this interface, not the concrete implementation.
  * This allows for easier testing and future flexibility (e.g. swapping databases).
@@ -26,7 +27,7 @@ import (
  * - FindByID: Get a movie by its MongoDB ObjectID.
  * - FindByIdentifier: Get a movie by its Internet Archive identifier.
  * - CountAll: Get the total number of movies (for pagination metadata).
-*/
+ */
 type MovieRepository interface {
 	// BulkUpsert inserts or updates movies by their IA identifier.
 	BulkUpsert(ctx context.Context, movies []model.Movie) error
@@ -42,8 +43,14 @@ type MovieRepository interface {
 
 	// CountAll returns the total number of movies (for pagination metadata).
 	CountAll(ctx context.Context) (int64, error)
-}
 
+	// FindByGenre returns a paginated list of movies filtered by genre (case-insensitive),
+	// with the total count of matching movies for pagination metadata.
+	FindByGenre(ctx context.Context, genre string, skip, limit int64) ([]model.Movie, int64, error)
+
+	// SearchMovies returns a paginated list of movies based on the provided filter.
+	SearchMovies(ctx context.Context, filter model.SearchFilter) (model.PaginatedMovies, error)
+}
 
 // Concrete implementation
 
@@ -53,7 +60,7 @@ type MovieRepository interface {
  * The constructor ensures a unique index on the "identifier" field to prevent duplicates.
  * Each method interacts with MongoDB using the official Go driver, handling errors appropriately.
  * The service layer should only depend on the MovieRepository interface, not this struct.
-*/
+ */
 type movieRepository struct {
 	col *mongo.Collection
 }
@@ -80,7 +87,7 @@ func NewMovieRepository(db *mongo.Database) MovieRepository {
 /**
  * BulkUpsert uses MongoDB's UpdateOne with upsert=true for each movie.
  * "Upsert" means: update if exists, insert if not. This is idempotent.
-*/ 
+ */
 func (r *movieRepository) BulkUpsert(ctx context.Context, movies []model.Movie) error {
 	if len(movies) == 0 {
 		return nil
@@ -177,4 +184,126 @@ func (r *movieRepository) CountAll(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("movie repo: count failed: %w", err)
 	}
 	return count, nil
+}
+
+// FindByGenre returns movies filtered by genre with pagination.
+// Genre filtering is case-insensitive using regex.
+func (r *movieRepository) FindByGenre(ctx context.Context, genre string, skip, limit int64) ([]model.Movie, int64, error) {
+	// Build case-insensitive regex filter for genre
+	query := bson.M{
+		"genres": bson.M{
+			"$regex":   genre,
+			"$options": "i", // case-insensitive
+		},
+	}
+
+	// Count total matching documents
+	total, err := r.col.CountDocuments(ctx, query)
+	if err != nil {
+		return nil, 0, fmt.Errorf("movie repo: count by genre failed: %w", err)
+	}
+
+	// Find options (sort + skip + limit)
+	findOpts := options.Find().
+		SetSkip(skip).
+		SetLimit(limit).
+		SetSort(bson.D{{Key: "title", Value: 1}}) // sort by title alphabetically
+
+	// Fetch paginated results
+	cursor, err := r.col.Find(ctx, query, findOpts)
+	if err != nil {
+		return nil, 0, fmt.Errorf("movie repo: find by genre failed: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var movies []model.Movie
+	if err := cursor.All(ctx, &movies); err != nil {
+		return nil, 0, fmt.Errorf("movie repo: cursor decode failed: %w", err)
+	}
+
+	// Guard: never return nil slice — frontend prefers an empty array
+	if movies == nil {
+		movies = []model.Movie{}
+	}
+
+	return movies, total, nil
+}
+
+// SearchMovies executes a dynamic query built from SearchFilter.
+func (r *movieRepository) SearchMovies(ctx context.Context, filter model.SearchFilter) (model.PaginatedMovies, error) {
+	// 1. Build the BSON filter
+	query := bson.D{}
+
+	if filter.Title != "" {
+		query = append(query, bson.E{
+			Key:   "$text",
+			Value: bson.D{{Key: "$search", Value: filter.Title}},
+		})
+	}
+
+	if filter.Genre != "" {
+		// Case-insensitive regex so "action", "Action", "ACTION" all match.
+		query = append(query, bson.E{
+			Key: "genre",
+			Value: bson.D{
+				{Key: "$regex", Value: filter.Genre},
+				{Key: "$options", Value: "i"},
+			},
+		})
+	}
+
+	// 2. Pagination maths
+	skip := int64((filter.Page - 1) * filter.Limit)
+
+	// 3. Find options (sort + skip + limit)
+	findOpts := options.Find().
+		SetSkip(skip).
+		SetLimit(int64(filter.Limit))
+
+	// When the user searched by title, sort by text-relevance score (best match first).
+	// Otherwise fall back to newest-first (descending _id is a cheap proxy for insert time).
+	if filter.Title != "" {
+		findOpts.SetProjection(bson.D{
+			{Key: "score", Value: bson.D{{Key: "$meta", Value: "textScore"}}},
+		})
+		findOpts.SetSort(bson.D{
+			{Key: "score", Value: bson.D{{Key: "$meta", Value: "textScore"}}},
+		})
+	} else {
+		findOpts.SetSort(bson.D{{Key: "_id", Value: -1}})
+	}
+
+	// 4. Count total matching documents
+	total, err := r.col.CountDocuments(ctx, query)
+	if err != nil {
+		return model.PaginatedMovies{}, err
+	}
+
+	// 5. Fetch the page
+	cursor, err := r.col.Find(ctx, query, findOpts)
+	if err != nil {
+		return model.PaginatedMovies{}, err
+	}
+	defer cursor.Close(ctx)
+
+	var movies []model.Movie
+	if err := cursor.All(ctx, &movies); err != nil {
+		return model.PaginatedMovies{}, err
+	}
+
+	// Guard: never return nil slice — frontend prefers an empty array
+	if movies == nil {
+		movies = []model.Movie{}
+	}
+
+	// 6. Build response
+	pages := int64(math.Ceil(float64(total) / float64(filter.Limit)))
+
+	return model.PaginatedMovies{
+		Total:  total,
+		Page:   filter.Page,
+		Limit:  filter.Limit,
+		Pages:  pages,
+		Movies: movies,
+	}, nil
 }
