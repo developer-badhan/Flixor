@@ -54,10 +54,29 @@ func SetupRouter(
 		// Public endpoints — no auth required
 		movies.GET("", movieHandler.GetMovies)        
 		movies.GET("/:id", movieHandler.GetMovieByID) 
-		movies.GET("/stream/:id", streamHandler.GetStream)
 
 		// Admin endpoint — protected by JWT auth middleware
 		movies.POST("/sync", movieHandler.SyncMovies)
+	}
+
+	// Single movie stream endpoint
+	movie := v1.Group("/movie")
+	movie.Use(middleware.Auth(jwtSecret))
+	{
+		movie.GET("/stream/:id", streamHandler.GetStream)
+
+	}
+
+	// Protected routes 
+	protected := v1.Group("/user")
+	protected.Use(middleware.Auth(jwtSecret))
+	{
+		// protected.GET("/watchlist", userHandler.GetWatchlist)
+		// protected.POST("/watchlist/:id", userHandler.AddToWatchlist)
+		// protected.DELETE("/watchlist/:id", userHandler.RemoveFromWatchlist)
+		// protected.POST("/like/:id", userHandler.LikeMovie)
+		// protected.POST("/dislike/:id", userHandler.DislikeMovie)
+		// protected.GET("/history", userHandler.GetWatchHistory)
 	}
 
 	return r
