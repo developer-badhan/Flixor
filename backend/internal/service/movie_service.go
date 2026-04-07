@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/developer-badhan/Flixor/internal/model"
@@ -29,6 +31,12 @@ type MovieService interface {
 
 	// GetMovieByID returns a single movie by its MongoDB ID string.
 	GetMovieByID(ctx context.Context, id string) (*model.Movie, error)
+
+	// GetMoviesByGenre returns a paginated list of movies filtered by genre.
+	GetMoviesByGenre(ctx context.Context, genre string, page, limit int) ([]model.Movie, int64, error)
+
+	// SearchMovies returns a paginated list of movies matching the search filter.
+	SearchMovies(ctx context.Context, filter model.SearchFilter) (model.PaginatedMovies, error)
 }
 
 // Concrete implementation
@@ -169,6 +177,71 @@ func (s *movieService) GetMovieByID(ctx context.Context, id string) (*model.Movi
 	}
 
 	return movie, nil
+}
+
+/**
+ * GetMoviesByGenre returns a paginated list of movies filtered by genre.
+ * It also returns the total count of movies in that genre for pagination metadata.
+ * Business rules:
+ *  - Genre filter is case-insensitive	
+ *  - Default page = 1, limit = 20 if invalid values provided
+ *  - Max limit of 100 to prevent abuse
+ */
+func (s *movieService) GetMoviesByGenre(ctx context.Context, genre string, page, limit int) ([]model.Movie, int64, error) {
+	// Sanitize inputs
+	if page <= 0 {	
+		page = 1
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if genre == "" {
+		return nil, 0, fmt.Errorf("genre cannot be empty")
+	}
+	if len(genre) > 50 {
+		return nil, 0, fmt.Errorf("genre is too long")
+	}
+	return s.repo.FindByGenre(ctx, genre, int64((page-1)*limit), int64(limit))
+}
+
+/**
+ * SearchMovies validates and sanitises the filter, applies business defaults,
+ * and delegates to the repository.
+ *
+ * Business rules enforced here (NOT in handler, NOT in repository):
+ *   - Page  must be ≥ 1          → default to 1 if not provided
+ *   - Limit must be between 1–50 → clamp to valid range (prevent abuse)
+ *   - Title & Genre are trimmed  → avoid whitespace-only queries hitting the DB
+*/
+func (s *movieService) SearchMovies(ctx context.Context, filter model.SearchFilter) (model.PaginatedMovies, error) {
+	// Sanitise strings 
+	filter.Title = strings.TrimSpace(filter.Title)
+	filter.Genre = strings.TrimSpace(filter.Genre)
+
+	// Reject searches with a title that's just special characters (mongo text search will return an error for queries like "---" or "***").
+	if filter.Title != "" && isOnlySpecialChars(filter.Title) {
+		return model.PaginatedMovies{}, errors.New("title contains invalid search characters")
+	}
+
+	// Apply defaults and business rules 
+	if filter.Page < 1 {
+		filter.Page = 1
+	}
+
+	// Allowing unlimited results would be a DoS vector.
+	switch {
+	case filter.Limit < 1:
+		filter.Limit = 10 // sensible default
+	case filter.Limit > 50:
+		filter.Limit = 50 // hard cap
+	}
+
+	return s.repo.SearchMovies(ctx, filter)
+}
+
+// isOnlySpecialChars checks if a string consists solely of special characters (no letters or digits).
+func isOnlySpecialChars(s string) bool {
+	panic("unimplemented")
 }
 
 // Sentinel errors — typed errors the handler can check with errors.Is()
