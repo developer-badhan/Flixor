@@ -16,6 +16,7 @@ import (
 func SetupRouter(
 	authHandler *handler.AuthHandler,
 	movieHandler *handler.MovieHandler,
+	streamHandler *handler.StreamHandler,
 	jwtSecret string,
 ) *gin.Engine {
 	r := gin.New()
@@ -36,22 +37,27 @@ func SetupRouter(
 		})
 	})
 
+	// API V1 group
+	v1 := r.Group("/api/v1")
+
 	// Auth routes
-	auth := r.Group("/auth")
+	auth := v1.Group("/auth")
 	{
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
 	}
 
-	// Movie routes
-	movies := r.Group("/movies")
+	// Movie & Stream routes
+	movies := v1.Group("/movies")
+	movies.Use(middleware.Auth(jwtSecret))
 	{
 		// Public endpoints — no auth required
-		movies.GET("", movieHandler.GetMovies)        // GET /movies?page=1&limit=20
-		movies.GET("/:id", movieHandler.GetMovieByID) // GET /movies/:id
+		movies.GET("", movieHandler.GetMovies)        
+		movies.GET("/:id", movieHandler.GetMovieByID) 
+		movies.GET("/stream/:id", streamHandler.GetStream)
 
 		// Admin endpoint — protected by JWT auth middleware
-		movies.POST("/sync", middleware.Auth(jwtSecret), movieHandler.SyncMovies)
+		movies.POST("/sync", movieHandler.SyncMovies)
 	}
 
 	return r
