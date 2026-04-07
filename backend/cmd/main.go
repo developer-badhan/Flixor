@@ -65,6 +65,11 @@ func main() {
 	// 6. Setup router with all handlers and JWT middleware
 	r := router.SetupRouter(authHandler, movieHandler, streamHandler, interactionHandler, cfg.JWTSecret)
 
+	// Set trusted proxies to nil to fix the warning
+	if err := r.SetTrustedProxies(nil); err != nil {
+		log.Fatalf("Failed to set trusted proxies: %v", err)
+	}
+
 	// 7. Start server 
 	// port := os.Getenv("PORT")
 	port := config.Load().Port
