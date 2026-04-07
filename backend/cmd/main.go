@@ -45,6 +45,7 @@ func main() {
 	streamRepo := repository.NewStreamRepository(db.Database)
 	interactionRepo := repository.NewInteractionRepository(db.Database)
 	recoRepo := repository.NewRecommendationRepository(db.Database)
+	analyticsRepo := repository.NewAnalyticsRepository(db.Database)
 
 	// Services 
 	authSvc  := service.NewAuthService(userRepo, cfg)
@@ -52,6 +53,7 @@ func main() {
 	streamSvc := service.NewStreamService(streamRepo)
 	interactionSvc := service.NewInteractionService(interactionRepo)
 	recoSvc := service.NewRecommendationService(recoRepo, geminiClient)
+	analyticsSvc := service.NewAnalyticsService(analyticsRepo)
 
 	// Handlers 
 	authHandler  := handler.NewAuthHandler(authSvc)
@@ -59,10 +61,10 @@ func main() {
 	streamHandler := handler.NewStreamHandler(streamSvc)
 	interactionHandler := handler.NewInteractionHandler(interactionSvc)
 	recoHandler := handler.NewRecommendationHandler(recoSvc)
-
+	analyticsHandler := handler.NewAnalyticsHandler(analyticsSvc)
 
 	// Setup router with all handlers and JWT middleware
-	r := router.SetupRouter(authHandler, movieHandler, streamHandler, interactionHandler, recoHandler, cfg.JWTSecret)
+	r := router.SetupRouter(authHandler, movieHandler, streamHandler, interactionHandler, recoHandler, analyticsHandler, cfg.JWTSecret)
 
 	// Set trusted proxies to nil to fix the warning
 	if err := r.SetTrustedProxies(nil); err != nil {

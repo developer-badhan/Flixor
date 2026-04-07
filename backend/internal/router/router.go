@@ -19,6 +19,7 @@ func SetupRouter(
 	streamHandler      		*handler.StreamHandler,
 	interactionHandler 		*handler.InteractionHandler,
 	recommendationHandler   *handler.RecommendationHandler,
+	analyticsHandler   		*handler.AnalyticsHandler,
 	jwtSecret          		string,
 ) *gin.Engine {
 	r := gin.New()
@@ -87,6 +88,16 @@ func SetupRouter(
 	recommendations.Use(middleware.Auth(jwtSecret))
 	{
 		recommendations.GET("/", recommendationHandler.GetRecommendations)
+	}
+
+	// Analytics routes
+	analytics := v1.Group("/analytics")
+	analytics.Use(middleware.Auth(jwtSecret))
+	{
+        analytics.GET("/trending",     analyticsHandler.GetTrending)
+        analytics.GET("/most-watched", analyticsHandler.GetMostWatched)
+        analytics.GET("/top-genres",   analyticsHandler.GetTopGenres)
+        analytics.GET("/stats",        analyticsHandler.GetPlatformStats)
 	}
 
 	return r
