@@ -14,11 +14,12 @@ import (
  * All dependencies (handlers) are injected — the router itself has no business logic.
  */
 func SetupRouter(
-	authHandler        *handler.AuthHandler,
-	movieHandler       *handler.MovieHandler,
-	streamHandler      *handler.StreamHandler,
-	interactionHandler *handler.InteractionHandler,
-	jwtSecret          string,
+	authHandler        		*handler.AuthHandler,
+	movieHandler       		*handler.MovieHandler,
+	streamHandler      		*handler.StreamHandler,
+	interactionHandler 		*handler.InteractionHandler,
+	recommendationHandler   *handler.RecommendationHandler,
+	jwtSecret          		string,
 ) *gin.Engine {
 	r := gin.New()
 
@@ -55,6 +56,7 @@ func SetupRouter(
 		// Public endpoints — no auth required
 		movies.GET("", movieHandler.GetMovies)        
 		movies.GET("/:id", movieHandler.GetMovieByID) 
+		movies.GET("/search", movieHandler.SearchMovies)
 
 		// Admin endpoint — protected by JWT auth middleware
 		movies.POST("/sync", movieHandler.SyncMovies)
@@ -80,6 +82,12 @@ func SetupRouter(
 		interactions.GET("/history", interactionHandler.GetHistory)
 	}
 
+	// Recommendation routes
+	recommendations := v1.Group("/recommendations")
+	recommendations.Use(middleware.Auth(jwtSecret))
+	{
+		recommendations.GET("/", recommendationHandler.GetRecommendations)
+	}
 
 	return r
 }

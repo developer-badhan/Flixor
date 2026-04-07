@@ -19,6 +19,7 @@ type Config struct {
 	DBName         string
 	JWTSecret      string
 	JWTExpiryHours int
+	GEMINI_API_KEY string
 }
 
 /**
@@ -45,6 +46,7 @@ func Load() *Config {
 		DBName:         getEnv("DB_NAME", "flixor"),
 		JWTSecret:      getEnv("JWT_SECRET", ""),
 		JWTExpiryHours: jwtExpiry,
+		GEMINI_API_KEY: getEnv("GEMINI_API_KEY", ""),
 	}
 
 	// Validate required fields, crash early with a clear message
@@ -66,6 +68,9 @@ func (c *Config) validate() {
 	}
 	if c.JWTSecret == "change_this_to_a_long_random_secret" {
 		log.Println("WARNING: JWT_SECRET is using the default placeholder — change it before production")
+	}
+	if c.GEMINI_API_KEY == "" {
+		log.Fatal("GEMINI_API_KEY is required but not set in environment")
 	}
 }
 

@@ -8,8 +8,6 @@ import (
 	"github.com/developer-badhan/Flixor/internal/repository"
 	"github.com/developer-badhan/Flixor/internal/service"
 	"github.com/developer-badhan/Flixor/internal/router"
-
-	"github.com/joho/godotenv"
 )
 
 /** 
@@ -28,49 +26,50 @@ import (
  * Note: The server will log a message when it starts and if it fails to start.
 */
 func main() {
-	// 1. Load environment variables 
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, reading from OS environment")
-	}
-
-	// 2. Load config 
+	// Load config (also loads .env internally)
 	cfg := config.Load()
 
-	// 3. Connect to MongoDB 
+	// Initialize Gemini client
+	geminiClient := service.NewGeminiClient(cfg.GEMINI_API_KEY)
+
+	// Connect to MongoDB 
 	db := config.ConnectDB(cfg)
 	log.Println("✅ Connected to MongoDB")
 
 	// Disconnect cleanly when main() returns for any reason.
 	defer db.Disconnect()
 
-	// 3. Repositories 
+	// Repositories 
 	userRepo  := repository.NewUserRepository(db)
 	movieRepo := repository.NewMovieRepository(db.Database)
 	streamRepo := repository.NewStreamRepository(db.Database)
 	interactionRepo := repository.NewInteractionRepository(db.Database)
+	recoRepo := repository.NewRecommendationRepository(db.Database)
 
-	// 4. Services 
+	// Services 
 	authSvc  := service.NewAuthService(userRepo, cfg)
 	movieSvc := service.NewMovieService(movieRepo)
 	streamSvc := service.NewStreamService(streamRepo)
 	interactionSvc := service.NewInteractionService(interactionRepo)
+	recoSvc := service.NewRecommendationService(recoRepo, geminiClient)
 
-	// 5. Handlers 
+	// Handlers 
 	authHandler  := handler.NewAuthHandler(authSvc)
 	movieHandler := handler.NewMovieHandler(movieSvc)
 	streamHandler := handler.NewStreamHandler(streamSvc)
 	interactionHandler := handler.NewInteractionHandler(interactionSvc)
+	recoHandler := handler.NewRecommendationHandler(recoSvc)
 
 
-	// 6. Setup router with all handlers and JWT middleware
-	r := router.SetupRouter(authHandler, movieHandler, streamHandler, interactionHandler, cfg.JWTSecret)
+	// Setup router with all handlers and JWT middleware
+	r := router.SetupRouter(authHandler, movieHandler, streamHandler, interactionHandler, recoHandler, cfg.JWTSecret)
 
 	// Set trusted proxies to nil to fix the warning
 	if err := r.SetTrustedProxies(nil); err != nil {
 		log.Fatalf("Failed to set trusted proxies: %v", err)
 	}
 
-	// 7. Start server 
+	// Start server 
 	// port := os.Getenv("PORT")
 	port := config.Load().Port
 	if port == "" {
