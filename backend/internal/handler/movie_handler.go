@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/developer-badhan/Flixor/internal/model"
 	"github.com/developer-badhan/Flixor/internal/service"
+	"github.com/developer-badhan/Flixor/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -13,7 +15,7 @@ import (
 /**
  * MovieHandler holds a reference to the movie service.
  * This is the only dependency this layer has — no DB, no IA API.
-*/
+ */
 type MovieHandler struct {
 	svc service.MovieService
 }
@@ -146,4 +148,57 @@ func queryInt(c *gin.Context, key string, defaultVal int) int {
 		return defaultVal
 	}
 	return val
+}
+
+
+/**
+ * SearchMovies handles GET /movies/search
+ * 
+ * Query params:
+ * 
+ * 	title  (string)  — full-text search on movie title
+ * genre  (string)  — case-insensitive genre filter
+ * page   (int)     — page number, default 1
+ * limit  (int)     — results per page, default 10 (max 50)
+ *
+ * Example requests:
+ *
+ * GET /movies/search                          → all movies, page 1
+ * GET /movies/search?title=batman             → text search
+ * GET /movies/search?genre=action             → genre filter
+ * GET /movies/search?title=spider&genre=action&page=2&limit=5
+ *
+ * Example response:
+ * 
+ * 	{
+ * 	  "total":  42,
+ * 	  "page":   1,
+ * 	  "limit":  10,
+ * 	  "pages":  5,
+ * 	  "movies": [ {...}, {...} ]
+ * 	}
+*/
+func (h *MovieHandler) SearchMovies(c *gin.Context) {
+	// ── Parse query params ────────────────────────────────────────────────────
+	// strconv.Atoi returns 0 on error — the service layer will normalise 0 → default.
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+
+	filter := model.SearchFilter{
+		Title: c.Query("title"),
+		Genre: c.Query("genre"),
+		Page:  page,
+		Limit: limit,
+	}
+
+	// ── Call service ──────────────────────────────────────────────────────────
+	result, err := h.svc.SearchMovies(c.Request.Context(), filter)
+	if err != nil {
+		// Return 400 for validation errors, 500 for unexpected errors.
+		// A real production app would distinguish error types with a custom error type.
+		utils.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "Movies fetched successfully", result)
 }
