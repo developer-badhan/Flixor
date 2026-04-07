@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"os"
 
 	"github.com/developer-badhan/Flixor/config"
 	"github.com/developer-badhan/Flixor/internal/handler"
@@ -47,20 +46,25 @@ func main() {
 	// 3. Repositories 
 	userRepo  := repository.NewUserRepository(db)
 	movieRepo := repository.NewMovieRepository(db.Database)
+	streamRepo := repository.NewStreamRepository(db.Database)
 
 	// 4. Services 
 	authSvc  := service.NewAuthService(userRepo, cfg)
 	movieSvc := service.NewMovieService(movieRepo)
+	streamSvc := service.NewStreamService(streamRepo)
 
 	// 5. Handlers 
 	authHandler  := handler.NewAuthHandler(authSvc)
 	movieHandler := handler.NewMovieHandler(movieSvc)
+	streamHandler := handler.NewStreamHandler(streamSvc)
 
-	// 6. Router 
-	r := router.SetupRouter(authHandler, movieHandler, cfg.JWTSecret)
+
+	// 6. Setup router with all handlers and JWT middleware
+	r := router.SetupRouter(authHandler, movieHandler, streamHandler, cfg.JWTSecret)
 
 	// 7. Start server 
-	port := os.Getenv("PORT")
+	// port := os.Getenv("PORT")
+	port := config.Load().Port
 	if port == "" {
 		port = "5000"
 	}
@@ -70,3 +74,4 @@ func main() {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }
+
