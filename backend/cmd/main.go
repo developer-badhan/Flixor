@@ -47,20 +47,23 @@ func main() {
 	userRepo  := repository.NewUserRepository(db)
 	movieRepo := repository.NewMovieRepository(db.Database)
 	streamRepo := repository.NewStreamRepository(db.Database)
+	interactionRepo := repository.NewInteractionRepository(db.Database)
 
 	// 4. Services 
 	authSvc  := service.NewAuthService(userRepo, cfg)
 	movieSvc := service.NewMovieService(movieRepo)
 	streamSvc := service.NewStreamService(streamRepo)
+	interactionSvc := service.NewInteractionService(interactionRepo)
 
 	// 5. Handlers 
 	authHandler  := handler.NewAuthHandler(authSvc)
 	movieHandler := handler.NewMovieHandler(movieSvc)
 	streamHandler := handler.NewStreamHandler(streamSvc)
+	interactionHandler := handler.NewInteractionHandler(interactionSvc)
 
 
 	// 6. Setup router with all handlers and JWT middleware
-	r := router.SetupRouter(authHandler, movieHandler, streamHandler, cfg.JWTSecret)
+	r := router.SetupRouter(authHandler, movieHandler, streamHandler, interactionHandler, cfg.JWTSecret)
 
 	// 7. Start server 
 	// port := os.Getenv("PORT")
