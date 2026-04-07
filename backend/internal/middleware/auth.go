@@ -56,7 +56,7 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 		}
 
 		// Step 3: Inject claims into request context 
-		c.Set("user_id", claims.UserID)
+		c.Set("userID", claims.UserID)
 		c.Set("email", claims.Email)
 
 		// ── Step 4: Pass control to the next handler 
