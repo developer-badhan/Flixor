@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"context"
 
 	"github.com/developer-badhan/Flixor/config"
 	"github.com/developer-badhan/Flixor/internal/handler"
@@ -35,6 +36,13 @@ func main() {
 	// Connect to MongoDB 
 	db := config.ConnectDB(cfg)
 	log.Println("✅ Connected to MongoDB")
+
+    // Ensure analytics indexes exist (non-fatal)
+    ctx := context.Background()
+    if err := repository.EnsureAnalyticsIndexes(ctx, db.Database); err != nil {
+        log.Printf("Warning: could not ensure analytics indexes: %v", err)
+        // Non-fatal — app still works, just slower without indexes
+    }
 
 	// Disconnect cleanly when main() returns for any reason.
 	defer db.Disconnect()
