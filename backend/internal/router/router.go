@@ -10,33 +10,28 @@ import (
 )
 
 /**
- * SetupRouter wires all routes and returns the configured Gin engine.
- * All dependencies (handlers) are injected — the router itself has no business logic.
+ * SetupRoutes wires all API routes to the provided Gin engine.
+ * The router relies on the injected handlers and doesn't handle server config.
  */
-func SetupRouter(
-	authHandler        		*handler.AuthHandler,
-	movieHandler       		*handler.MovieHandler,
-	streamHandler      		*handler.StreamHandler,
+func SetupRoutes(
+	r *gin.Engine,
+	authHandler 			*handler.AuthHandler,
+	movieHandler 			*handler.MovieHandler,
+	streamHandler 			*handler.StreamHandler,
 	interactionHandler 		*handler.InteractionHandler,
-	recommendationHandler   *handler.RecommendationHandler,
-	analyticsHandler   		*handler.AnalyticsHandler,
-	jwtSecret          		string,
-) *gin.Engine {
-	r := gin.New()
-
-	// Global middleware
-	r.Use(gin.Logger())
-	r.Use(gin.Recovery()) // recover from panics and return 500
-
-	//  Health check
+	recommendationHandler 	*handler.RecommendationHandler,
+	analyticsHandler 		*handler.AnalyticsHandler,
+	jwtSecret 				string,
+) {
+	// Health check
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"content-type" : "Application/json",
-			"message":   "Flixor API is healthy",
-			"status":    "ok",
-			"timestamp": time.Now().Format(time.RFC3339),
-			"uptime":    time.Since(time.Now().Add(-time.Hour)).String(), // Example uptime
-			"version":   "1.0.0",
+			"content-type": "Application/json",
+			"message":      "Flixor API is healthy",
+			"status":       "ok",
+			"timestamp":    time.Now().Format(time.RFC3339),
+			"uptime":       time.Since(time.Now().Add(-time.Hour)).String(), // Example uptime
+			"version":      "1.0.0",
 		})
 	})
 
@@ -55,8 +50,8 @@ func SetupRouter(
 	movies.Use(middleware.Auth(jwtSecret))
 	{
 		// Public endpoints — no auth required
-		movies.GET("", movieHandler.GetMovies)        
-		movies.GET("/:id", movieHandler.GetMovieByID) 
+		movies.GET("", movieHandler.GetMovies)
+		movies.GET("/:id", movieHandler.GetMovieByID)
 		movies.GET("/search", movieHandler.SearchMovies)
 
 		// Admin endpoint — protected by JWT auth middleware
@@ -68,7 +63,6 @@ func SetupRouter(
 	movie.Use(middleware.Auth(jwtSecret))
 	{
 		movie.GET("/stream/:id", streamHandler.GetStream)
-
 	}
 
 	// Interaction routes
@@ -94,11 +88,9 @@ func SetupRouter(
 	analytics := v1.Group("/analytics")
 	analytics.Use(middleware.Auth(jwtSecret))
 	{
-        analytics.GET("/trending",     analyticsHandler.GetTrending)
-        analytics.GET("/most-watched", analyticsHandler.GetMostWatched)
-        analytics.GET("/top-genres",   analyticsHandler.GetTopGenres)
-        analytics.GET("/stats",        analyticsHandler.GetPlatformStats)
+		analytics.GET("/trending", analyticsHandler.GetTrending)
+		analytics.GET("/most-watched", analyticsHandler.GetMostWatched)
+		analytics.GET("/top-genres", analyticsHandler.GetTopGenres)
+		analytics.GET("/stats", analyticsHandler.GetPlatformStats)
 	}
-
-	return r
 }
