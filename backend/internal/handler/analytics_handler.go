@@ -11,7 +11,7 @@ import (
 
 /**
  * AnalyticsHandler handles all four analytics endpoints.
- * These endpoints are intentionally PUBLIC (no auth required) —
+ * These endpoints require authentication
  * analytics data like trending and most-watched are typically surfaced
  * on the homepage for all visitors, logged in or not.
 */

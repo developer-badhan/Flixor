@@ -56,12 +56,15 @@ type TrendingMovieResult struct {
  *
  * Pipeline explained step by step:
  *
- *   Stage 1 — $match:
+ *   Stage 1 — $unwind:
+ *     Unwind the events array in the watch_history collection.
+ *
+ *   Stage 2 — $match:
  *     Filter watch_history entries to only those after `since` timestamp.
  *     This is the "trending window" — only recent watches count.
  *     MongoDB uses the index on `watched_at` for this → very fast.
  *
- *   Stage 2 — $group:
+ *   Stage 3 — $group:
  *     Group remaining entries by movie_id.
  *     Count how many watch events each movie has in the window → views_in_window.
  *
@@ -89,28 +92,32 @@ func (r *AnalyticsRepository) GetTrending(ctx context.Context, since time.Time, 
 	defer cancel()
 
 	pipeline := mongo.Pipeline{
-		// Stage 1 — filter by time window
+		// Stage 1 — unwind events array
+		{
+			{Key: "$unwind", Value: "$events"},
+		},
+		// Stage 2 — filter by time window
 		{
 			{Key: "$match", Value: bson.M{
-				"watched_at": bson.M{"$gte": since},
+				"events.watched_at": bson.M{"$gte": since},
 			}},
 		},
-		// Stage 2 — count views per movie in this window
+		// Stage 3 — group by movie_id
 		{
 			{Key: "$group", Value: bson.M{
-				"_id":            "$movie_id",
+				"_id":             "$events.movie_id",
 				"views_in_window": bson.M{"$sum": 1},
 			}},
 		},
-		// Stage 3 — sort hottest first
+		// Stage 4 — sort hottest first
 		{
 			{Key: "$sort", Value: bson.D{{Key: "views_in_window", Value: -1}}},
 		},
-		// Stage 4 — trim BEFORE lookup (performance critical)
+		// Stage 5 — trim BEFORE lookup (performance critical)
 		{
 			{Key: "$limit", Value: limit},
 		},
-		// Stage 5 — join to movies collection
+		// Stage 6 — join to movies collection
 		{
 			{Key: "$lookup", Value: bson.M{
 				"from":         "movies",
@@ -119,14 +126,14 @@ func (r *AnalyticsRepository) GetTrending(ctx context.Context, since time.Time, 
 				"as":           "movie_info",
 			}},
 		},
-		// Stage 6 — flatten the array lookup result
+		// Stage 7 — flatten the array lookup result
 		{
 			{Key: "$unwind", Value: bson.M{
 				"path":                       "$movie_info",
 				"preserveNullAndEmptyArrays": false,
 			}},
 		},
-		// Stage 7 — project final shape
+		// Stage 8 — project final shape
 		{
 			{Key: "$project", Value: bson.M{
 				"_id":             "$movie_info._id",
@@ -392,7 +399,7 @@ func (r *AnalyticsRepository) sumViewCounts(ctx context.Context) (int64, error) 
 func EnsureAnalyticsIndexes(ctx context.Context, db *mongo.Database) error {
 	// Index on watch_history.watched_at
 	_, err := db.Collection("watch_history").Indexes().CreateOne(ctx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "watched_at", Value: -1}},
+		Keys:    bson.D{{Key: "events.watched_at", Value: -1}},
 		Options: options.Index().SetName("idx_watch_history_watched_at"),
 	})
 	if err != nil {

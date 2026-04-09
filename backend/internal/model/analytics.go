@@ -114,6 +114,6 @@ type PlatformStats struct {
 	TotalMovies    int64 `json:"total_movies"`
 	TotalUsers     int64 `json:"total_users"`
 	TotalViews     int64 `json:"total_views"`      
-	TotalWatchlist int64 `json:"total_watchlisted"` 
+	TotalWatchlist int64 `json:"total_watchlist"` 
 	TotalLikes     int64 `json:"total_likes"`
 }

@@ -41,9 +41,10 @@ type InteractionRepository interface {
  * historyCol: stores user watch history	
 */
 type interactionRepository struct {
-	watchlistCol  *mongo.Collection
-	reactionCol   *mongo.Collection
-	historyCol    *mongo.Collection
+	watchlistCol     *mongo.Collection
+	reactionCol      *mongo.Collection
+	historyCol    	 *mongo.Collection
+	historyEventsCol *mongo.Collection
 }
 
 /**
@@ -52,9 +53,10 @@ type interactionRepository struct {
 */
 func NewInteractionRepository(db *mongo.Database) InteractionRepository {
 	repo := &interactionRepository{
-		watchlistCol: db.Collection("watchlists"),
-		reactionCol:  db.Collection("reactions"),
-		historyCol:   db.Collection("watch_history"),
+		watchlistCol:     db.Collection("watchlists"),
+		reactionCol:      db.Collection("reactions"),
+		historyCol:       db.Collection("watch_history"),
+		historyEventsCol: db.Collection("watch_events"),
 	}
 
 	// Ensure indexes so queries are fast and constraints are enforced at DB level.
@@ -261,7 +263,19 @@ func (r *interactionRepository) AddToHistory(
 		},
 		options.Update().SetUpsert(true),
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	// ALSO insert flat event for analytics
+	_, err2 := r.historyEventsCol.InsertOne(ctx, bson.M{
+		"user_id":    userID,
+		"movie_id":   movieID,
+		"watched_at": time.Now(),
+	})
+	if err2 != nil {
+		return err2
+	}
+	return nil
 }
 
 /** 
