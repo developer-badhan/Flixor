@@ -3,7 +3,11 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/developer-badhan/Flixor/config"
 	"github.com/developer-badhan/Flixor/internal/model"
@@ -12,142 +16,254 @@ import (
 )
 
 /**
- * AuthService handles all authentication business logic.
- * It owns the rules — what makes a valid registration, what makes a
- * successful login. The handler layer enforces HTTP; this layer enforces business.
-*/
+ * AuthService handles ALL authentication logic:
+ * - User registration & login
+ * - Access + Refresh token issuing
+ * - Token rotation
+ * - Logout & session revocation
+ *
+ * Think of this as the "brain" of your auth system.
+ */
 type AuthService struct {
-	userRepo *repository.UserRepository
-	cfg      *config.Config
+	userRepo    *repository.UserRepository
+	refreshRepo repository.RefreshTokenRepository
+	cfg         *config.Config
 }
 
 /**
  * Constructor — inject dependencies once
-*/
-func NewAuthService(userRepo *repository.UserRepository, cfg *config.Config) *AuthService {
+ */
+func NewAuthService(
+	userRepo *repository.UserRepository,
+	refreshRepo repository.RefreshTokenRepository,
+	cfg *config.Config,
+) *AuthService {
 	return &AuthService{
-		userRepo: userRepo,
-		cfg:      cfg,
+		userRepo:    userRepo,
+		refreshRepo: refreshRepo,
+		cfg:         cfg,
 	}
 }
 
 /**
- *  Register creates a new user account.
- * Business rules enforced here:
- *   - Email must not already be registered
- *   - Password is hashed before storage — plain text never touches the database
- *   - Timestamps are set by the repository — not trusted from the client
- * 
- * Returns AuthResponse (token + public user) so the client is
- * logged in immediately after registering — no second login call needed.
+ * REGISTER (Upgraded to use token pair):
+ * Registers a new user and returns a token pair.
 */
-func (s *AuthService) Register(ctx context.Context, req *model.RegisterRequest) (*model.AuthResponse, error) {
-	// Rule 1: Check for duplicate email 
+func (s *AuthService) Register(ctx context.Context, req *model.RegisterRequest) (*model.TokenResponse, error) {
+
+	// Rule 1: Check duplicate email
 	existing, err := s.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil && !errors.Is(err, repository.ErrUserNotFound) {
-		// A real database error — not just "not found"
 		return nil, errors.New("registration failed — please try again")
 	}
 	if existing != nil {
 		return nil, errors.New("email already registered")
 	}
 
-	// Rule 2: Hash the password 
+	// Rule 2: Hash password
 	hashedPassword, err := utils.HashPassword(req.Password)
 	if err != nil {
 		return nil, errors.New("registration failed — please try again")
 	}
 
-	// Rule 3: Build the user document 
+	// Rule 3: Create user model
 	user := &model.User{
 		Username: req.Username,
 		Email:    req.Email,
 		Password: hashedPassword,
 	}
 
-	// Rule 4: Persist the user 
+	// Rule 4: Save user
 	createdUser, err := s.userRepo.CreateUser(ctx, user)
 	if err != nil {
 		return nil, err
 	}
 
-	// Rule 5: Generate JWT
-	token, err := utils.GenerateToken(
-		createdUser.ID.Hex(),
+	// Rule 5: Issue token pair (NEW SYSTEM)
+	tokenPair, err := s.IssueTokenPair(
+		ctx,
+		createdUser.ID,
 		createdUser.Email,
-		s.cfg.JWTSecret,
-		s.cfg.JWTExpiryHours,
+		"", // IP (optional)
+		"", // UserAgent (optional)
 	)
 	if err != nil {
 		return nil, errors.New("account created but login failed — please log in manually")
 	}
 
-	// Build and return the response 
-	return &model.AuthResponse{
-		Token: token,
-		User: model.PublicUser{
-			ID:        createdUser.ID,
-			Username:  createdUser.Username,
-			Email:     createdUser.Email,
-			CreatedAt: createdUser.CreatedAt,
-		},
-	}, nil
+	return tokenPair, nil
 }
 
 /**
- *  Login authenticates an existing user and returns a JWT on success.
- *  Business rules enforced here:
- *    - Always return the same error for wrong email or wrong password
- *   (prevents email enumeration attacks)
- *    - Token expiry is read from config — one place to change it
+ * LOGIN (Upgraded to use token pair):
+ * Logs in a user and returns a token pair.
 */
-func (s *AuthService) Login(ctx context.Context, req *model.LoginRequest) (*model.AuthResponse, error) {
-	// Step 1: Look up the user by email
+func (s *AuthService) Login(ctx context.Context, req *model.LoginRequest) (*model.TokenResponse, error) {
+
+	// Step 1: Find user
 	user, err := s.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
 		return nil, errors.New("invalid credentials")
 	}
 
-	// Step 2: Verify the password
+	// Step 2: Verify password
 	if err := utils.CheckPassword(req.Password, user.Password); err != nil {
 		return nil, errors.New("invalid credentials")
 	}
 
-	// Step 3: Generate JWT
-	token, err := utils.GenerateToken(
-		user.ID.Hex(),
+	// Step 3: Issue token pair
+	tokenPair, err := s.IssueTokenPair(
+		ctx,
+		user.ID,
 		user.Email,
-		s.cfg.JWTSecret,
-		s.cfg.JWTExpiryHours,
+		"", // IP
+		"", // UserAgent
 	)
 	if err != nil {
 		return nil, errors.New("login failed — please try again")
 	}
 
-	// Step 4: Update last seen (non-blocking) 
+	// Step 4: Async last seen update
 	go s.updateLastSeen(user.ID.Hex())
 
-	// Build and return the response 
-	return &model.AuthResponse{
-		Token: token,
-		User: model.PublicUser{
-			ID:        user.ID,
-			Username:  user.Username,
-			Email:     user.Email,
-			CreatedAt: user.CreatedAt,
-		},
+	return tokenPair, nil
+}
+
+/**
+ * TOKEN ISSUING (Access + Refresh):
+ * Issues a new pair of access and refresh tokens for a user.
+*/
+func (s *AuthService) IssueTokenPair(
+	ctx context.Context,
+	userID primitive.ObjectID,
+	email, ip, userAgent string,
+) (*model.TokenResponse, error) {
+
+	// Access Token (short-lived)
+	accessToken, err := utils.GenerateAccessToken(userID.Hex(), email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	}
+
+	// Refresh Token (secure random)
+	rawRefresh, hash, expiresAt, err := utils.GenerateRefreshToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+
+	// Store hash in DB
+	record := &model.RefreshToken{
+		UserID:      userID,
+		TokenHash:   hash,
+		Blacklisted: false,
+		UserAgent:   userAgent,
+		IP:          ip,
+		ExpiresAt:   expiresAt,
+	}
+
+	if err := s.refreshRepo.Create(ctx, record); err != nil {
+		return nil, fmt.Errorf("failed to store refresh token: %w", err)
+	}
+
+	return &model.TokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: rawRefresh,
+		TokenType:    "Bearer",
+		ExpiresIn:    utils.AccessTokenTTLSeconds,
 	}, nil
 }
 
 /**
- * updateLastSeen records when a user last logged in.
- * Runs in a background goroutine — login response is never blocked by this.
- * Uses a fresh context since the request context may already be cancelled
- * by the time this goroutine runs.
+ * TOKEN ISSUING (Access + Refresh):
+ * Issues a new pair of access and refresh tokens for a user.
+*/
+var (
+	ErrTokenNotFound    = errors.New("refresh token not found")
+	ErrTokenBlacklisted = errors.New("refresh token has been revoked")
+	ErrTokenExpired     = errors.New("refresh token has expired")
+	ErrTokenReuse       = errors.New("refresh token reuse detected — all sessions revoked")
+)
+
+/**
+ * REFRESH TOKENS (Rotation + Security):
+ * Refreshes the access and refresh tokens using the provided refresh token.
+*/
+func (s *AuthService) RefreshTokens(
+	ctx context.Context,
+	rawRefreshToken, ip, userAgent string,
+) (*model.TokenResponse, error) {
+
+	hash := utils.HashToken(rawRefreshToken)
+
+	record, err := s.refreshRepo.FindByHash(ctx, hash)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrTokenNotFound
+		}
+		return nil, fmt.Errorf("db error: %w", err)
+	}
+
+	// Reuse attack detection
+	if record.Blacklisted {
+		_ = s.refreshRepo.BlacklistAllForUser(ctx, record.UserID)
+		return nil, ErrTokenReuse
+	}
+
+	// Expiry check
+	if time.Now().After(record.ExpiresAt) {
+		return nil, ErrTokenExpired
+	}
+
+	// Blacklist old token
+	if err := s.refreshRepo.BlacklistByHash(ctx, hash); err != nil {
+		return nil, fmt.Errorf("failed to revoke token: %w", err)
+	}
+
+	// Issue new token pair
+	return s.IssueTokenPair(ctx, record.UserID, "", ip, userAgent)
+}
+
+/**
+ * LOGOUT (Single Device):
+ * Revokes a single refresh token, logging the user out of one device.
+*/
+func (s *AuthService) Logout(ctx context.Context, rawRefreshToken string) error {
+
+	hash := utils.HashToken(rawRefreshToken)
+
+	record, err := s.refreshRepo.FindByHash(ctx, hash)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return ErrTokenNotFound
+		}
+		return fmt.Errorf("db error: %w", err)
+	}
+
+	if record.Blacklisted {
+		return nil // idempotent
+	}
+
+	return s.refreshRepo.BlacklistByHash(ctx, hash)
+}
+
+/**
+ * LOGOUT ALL (All Devices):
+ * Revokes all refresh tokens for a user, effectively logging them out of all devices.
+*/
+func (s *AuthService) LogoutAll(ctx context.Context, userID primitive.ObjectID) error {
+	return s.refreshRepo.BlacklistAllForUser(ctx, userID)
+}
+
+/**
+ * BACKGROUND TASK:
+ * Updates the last seen timestamp for a user.
+ * This is called asynchronously after a successful login.
 */
 func (s *AuthService) updateLastSeen(userID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+
+	// TODO: Implement userRepo.UpdateLastSeen(userID)
 	_ = ctx
 	_ = userID
 }
