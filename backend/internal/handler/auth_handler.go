@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+
 
 	"github.com/developer-badhan/Flixor/internal/model"
 	"github.com/developer-badhan/Flixor/internal/service"
@@ -24,6 +27,16 @@ func NewAuthHandler(authService *service.AuthService) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
 	}
+}
+
+// Refresh token request struct
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+ 
+// Logout request struct
+type logoutRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
 // Register handles POST /api/v1/auth/register
@@ -91,6 +104,97 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
+// Refresh handles POST /api/v1/auth/refresh
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	var req refreshRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "refresh_token is required",
+		})
+		return
+	}
+ 
+	ip := c.ClientIP()
+	userAgent := c.GetHeader("User-Agent")
+ 
+	tokens, err := h.authService.RefreshTokens(c.Request.Context(), req.RefreshToken, ip, userAgent)
+	if err != nil {
+		statusCode, message := mapAuthError(err)
+		c.JSON(statusCode, gin.H{
+			"success": false,
+			"error":   message,
+		})
+		return
+	}
+ 
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    tokens,
+	})
+}
+
+// Logout handles POST /api/v1/auth/logout
+func (h *AuthHandler) Logout(c *gin.Context) {
+	var req logoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "refresh_token is required",
+		})
+		return
+	}
+ 
+	if err := h.authService.Logout(c.Request.Context(), req.RefreshToken); err != nil {
+		statusCode, message := mapAuthError(err)
+		c.JSON(statusCode, gin.H{
+			"success": false,
+			"error":   message,
+		})
+		return
+	}
+ 
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "logged out successfully",
+	})
+}
+
+// LogoutAll handles POST /api/v1/auth/logout-all
+func (h *AuthHandler) LogoutAll(c *gin.Context) {
+	// The AuthMiddleware sets "userID" in the Gin context after validating the JWT.
+	userIDStr, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"error":   "unauthorized",
+		})
+		return
+	}
+ 
+	userID, err := primitive.ObjectIDFromHex(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "invalid user ID in token",
+		})
+		return
+	}
+ 
+	if err := h.authService.LogoutAll(c.Request.Context(), userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "failed to revoke sessions",
+		})
+		return
+	}
+ 
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "all sessions revoked successfully",
+	})
+}
+
 /**
  * Me handles GET /api/v1/auth/me
  * Returns the currently authenticated user's profile.
@@ -124,4 +228,24 @@ func formatValidationError(err error) string {
 		return err.Error()
 	}
 	return "invalid request"
+}
+
+/**
+ * mapAuthError converts service-layer sentinel errors to HTTP status + message.
+ * Centralizing this keeps all HTTP concerns in the handler layer.
+*/
+func mapAuthError(err error) (int, string) {
+	switch {
+	case errors.Is(err, service.ErrTokenNotFound):
+		return http.StatusUnauthorized, "invalid refresh token"
+	case errors.Is(err, service.ErrTokenBlacklisted):
+		return http.StatusUnauthorized, "refresh token has been revoked"
+	case errors.Is(err, service.ErrTokenExpired):
+		return http.StatusUnauthorized, "refresh token has expired — please login again"
+	case errors.Is(err, service.ErrTokenReuse):
+		// Tell the client clearly: we detected potential theft and logged them out everywhere.
+		return http.StatusUnauthorized, "security alert: token reuse detected — all sessions have been revoked"
+	default:
+		return http.StatusInternalServerError, "internal server error"
+	}
 }

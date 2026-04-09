@@ -13,6 +13,7 @@ import (
 	"github.com/developer-badhan/Flixor/internal/handler"
 	"github.com/developer-badhan/Flixor/internal/repository"
 	"github.com/developer-badhan/Flixor/internal/router"
+	"github.com/developer-badhan/Flixor/internal/middleware"
 	"github.com/developer-badhan/Flixor/internal/service"
 	"github.com/developer-badhan/Flixor/pkg/logger"
 	"github.com/gin-gonic/gin"
@@ -65,9 +66,18 @@ func main() {
 	interactionRepo := repository.NewInteractionRepository(db.Database)
 	recoRepo := repository.NewRecommendationRepository(db.Database)
 	analyticsRepo := repository.NewAnalyticsRepository(db.Database)
+	refreshTokenRepo := repository.NewRefreshTokenRepository(db.Database)
+
+	// Ensure DB Indexes (run at startup, idempotent)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := refreshTokenRepo.EnsureIndexes(ctx); err != nil {
+		log.Fatalf("failed to create refresh token indexes: %v", err)
+	}
+	log.Println("✅ Refresh token indexes ensured")
 
 	// Services
-	authSvc := service.NewAuthService(userRepo, cfg)
+	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, cfg)
 	movieSvc := service.NewMovieService(movieRepo)
 	streamSvc := service.NewStreamService(streamRepo)
 	interactionSvc := service.NewInteractionService(interactionRepo)
@@ -88,6 +98,15 @@ func main() {
 
 	// Initialize Gin engine
 	r := gin.New()
+
+	// CORS middleware
+	r.Use(middleware.CORSMiddleware())
+	// Request ID middleware
+	r.Use(middleware.RequestIDMiddleware())
+
+	// Global rate limiter: generous for normal browsing
+	globalStore := middleware.NewRateLimiterStore(10, 20)
+	r.Use(middleware.RateLimit(globalStore))
 
 	// Global middleware
 	r.Use(gin.Logger())

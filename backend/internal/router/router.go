@@ -43,6 +43,9 @@ func SetupRoutes(
 	{
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
+		auth.POST("/refresh", authHandler.Refresh)
+		auth.POST("/logout", authHandler.Logout)
+		auth.POST("/logout-all", authHandler.LogoutAll)
 	}
 
 	// Movie & Stream routes
