@@ -22,8 +22,7 @@ type AuthService struct {
 }
 
 /**
- * NewAuthService creates an AuthService with its required dependencies.
- * Called once at startup in main.go — dependencies injected, never fetched internally.
+ * Constructor — inject dependencies once
 */
 func NewAuthService(userRepo *repository.UserRepository, cfg *config.Config) *AuthService {
 	return &AuthService{
