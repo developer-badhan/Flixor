@@ -127,6 +127,7 @@ func main() {
 		recoHandler,
 		analyticsHandler,
 		cfg.JWTSecret,
+		db,
 	)
 
 	// Define Server Port

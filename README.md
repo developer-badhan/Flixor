@@ -90,7 +90,11 @@ backend/
 │
 │── pkg/                     # Reusable utilities
 │   ├── utils/
-│   └── validator/
+│   ├── validator/
+│   ├── apperror/
+│   ├── logger/
+│   ├── response/
+│   
 │ 
 │── .air.tomol              # Automatic restarting the server     
 ```

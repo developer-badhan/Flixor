@@ -1,13 +1,18 @@
 package router
 
 import (
+	"context"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/developer-badhan/Flixor/config"
 	"github.com/developer-badhan/Flixor/internal/handler"
 	"github.com/developer-badhan/Flixor/internal/middleware"
 )
+
+// startTime is the time when the server was started
+var startTime = time.Now()
 
 /**
  * SetupRoutes wires all API routes to the provided Gin engine.
@@ -22,16 +27,43 @@ func SetupRoutes(
 	recommendationHandler 	*handler.RecommendationHandler,
 	analyticsHandler 		*handler.AnalyticsHandler,
 	jwtSecret 				string,
+	db 						*config.DB,
 ) {
+	// Live check
+	r.GET("/live", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status": "alive",
+		})
+	})	
+	
+	// Ready check
+	r.GET("/ready", func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		err := db.Client.Ping(ctx, nil)
+		if err != nil {
+			c.JSON(503, gin.H{
+				"status": "not_ready",
+				"db":     "down",
+			})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"status": "ready",
+			"db":     "up",
+		})
+	})
+
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"content-type": "Application/json",
-			"message":      "Flixor API is healthy",
-			"status":       "ok",
-			"timestamp":    time.Now().Format(time.RFC3339),
-			"uptime":       time.Since(time.Now().Add(-time.Hour)).String(), // Example uptime
-			"version":      "1.0.0",
+			"status":    "ok",
+			"service":   "flixor-api",
+			"timestamp": time.Now().UTC(),
+			"uptime":    time.Since(startTime).String(),
+			"version":   "1.0.0",
 		})
 	})
 
@@ -50,15 +82,18 @@ func SetupRoutes(
 
 	// Movie & Stream routes
 	movies := v1.Group("/movies")
-	movies.Use(middleware.Auth(jwtSecret))
 	{
 		// Public endpoints — no auth required
 		movies.GET("", movieHandler.GetMovies)
+		movies.GET("/search", movieHandler.SearchMovies)	
 		movies.GET("/:id", movieHandler.GetMovieByID)
-		movies.GET("/search", movieHandler.SearchMovies)
 
-		// Admin endpoint — protected by JWT auth middleware
-		movies.POST("/sync", movieHandler.SyncMovies)
+		// Protected sub-group
+		protected := movies.Group("/")
+		protected.Use(middleware.Auth(jwtSecret))
+		{
+			protected.POST("/sync", movieHandler.SyncMovies)
+		}
 	}
 
 	// Single movie stream endpoint

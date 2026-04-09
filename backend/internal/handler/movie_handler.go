@@ -47,21 +47,19 @@ func (h *MovieHandler) GetMovies(c *gin.Context) {
 
 	movies, total, err := h.svc.GetMovies(c.Request.Context(), page, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "failed to fetch movies")
 		return
 	}
 
 	totalPages := (total + int64(limit) - 1) / int64(limit) // ceiling division
 
-	c.JSON(http.StatusOK, gin.H{
-		"data":        movies,
-		"total":       total,
-		"page":        page,
-		"limit":       limit,
-		"total_pages": totalPages,
-	})
+	utils.SuccessResponse(c, http.StatusOK, "Movies fetched successfully", gin.H{
+	"data":        movies,
+	"total":       total,
+	"page":        page,
+	"limit":       limit,
+	"total_pages": totalPages,
+})
 }
 
 /** 
@@ -81,7 +79,7 @@ func (h *MovieHandler) GetMovies(c *gin.Context) {
 func (h *MovieHandler) GetMovieByID(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "movie id is required"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "movie id is required")
 		return
 	}
 
@@ -90,16 +88,16 @@ func (h *MovieHandler) GetMovieByID(c *gin.Context) {
 		// Differentiate error types for proper HTTP status codes
 		switch {
 		case errors.Is(err, service.ErrInvalidID):
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid movie id format"})
+			utils.ErrorResponse(c, http.StatusBadRequest, "invalid movie id format")
 		case errors.Is(err, service.ErrMovieNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": "movie not found"})
+			utils.ErrorResponse(c, http.StatusNotFound, "movie not found")
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch movie"})
+			utils.ErrorResponse(c, http.StatusInternalServerError, "failed to fetch movie")
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": movie})
+	utils.SuccessResponse(c, http.StatusOK, "Movie fetched successfully", movie)
 }
 
 /** 
@@ -124,13 +122,12 @@ func (h *MovieHandler) SyncMovies(c *gin.Context) {
 
 	count, err := h.svc.SyncMovies(c.Request.Context(), rows, page)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "sync failed: " + err.Error()})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Sync failed: " + err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "sync complete",
-		"synced":  count,
+	utils.SuccessResponse(c, http.StatusOK, "Sync completed successfully", gin.H{
+		"synced": count,
 	})
 }
 
@@ -179,7 +176,7 @@ func queryInt(c *gin.Context, key string, defaultVal int) int {
  * 	}
 */
 func (h *MovieHandler) SearchMovies(c *gin.Context) {
-	// ── Parse query params ────────────────────────────────────────────────────
+	// Parse query params 
 	// strconv.Atoi returns 0 on error — the service layer will normalise 0 → default.
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
@@ -191,12 +188,15 @@ func (h *MovieHandler) SearchMovies(c *gin.Context) {
 		Limit: limit,
 	}
 
-	// ── Call service ──────────────────────────────────────────────────────────
+	// Call service 
 	result, err := h.svc.SearchMovies(c.Request.Context(), filter)
 	if err != nil {
-		// Return 400 for validation errors, 500 for unexpected errors.
-		// A real production app would distinguish error types with a custom error type.
-		utils.ErrorResponse(c, http.StatusBadRequest, err.Error())
+		// simple classification (clean & practical)
+		if err.Error() == "title contains invalid search characters" {
+			utils.ErrorResponse(c, http.StatusBadRequest, err.Error())
+			return
+		}		
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Failed to search movies")
 		return
 	}
 

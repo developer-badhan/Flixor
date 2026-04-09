@@ -24,7 +24,7 @@ type Movie struct {
 	StreamURL   string             `bson:"stream_url"      json:"stream_url"`
 	ViewCount   int64              `bson:"view_count"      json:"view_count"`
 	CreatedAt   time.Time          `bson:"created_at"      json:"created_at"`
-	UpdatedAt   time.Time          `bson:"update_at"       json:"update_at"`
+	UpdatedAt   time.Time          `bson:"updated_at"       json:"updated_at"`
 }
 
 /**

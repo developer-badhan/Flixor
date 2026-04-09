@@ -73,6 +73,14 @@ func NewMovieRepository(db *mongo.Database) MovieRepository {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	textIndex := mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "title", Value: "text"},
+			{Key: "description", Value: "text"},
+		},
+	}
+	_, _ = col.Indexes().CreateOne(ctx, textIndex)
+
 	indexModel := mongo.IndexModel{
 		Keys:    bson.D{{Key: "identifier", Value: 1}},
 		Options: options.Index().SetUnique(true),
@@ -89,6 +97,8 @@ func NewMovieRepository(db *mongo.Database) MovieRepository {
  * "Upsert" means: update if exists, insert if not. This is idempotent.
  */
 func (r *movieRepository) BulkUpsert(ctx context.Context, movies []model.Movie) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()	
 	if len(movies) == 0 {
 		return nil
 	}
@@ -109,6 +119,7 @@ func (r *movieRepository) BulkUpsert(ctx context.Context, movies []model.Movie) 
 				"director":      movie.Director,
 				"thumbnail_url": movie.ThumbnailURL,
 				"stream_url":    movie.StreamURL,
+				"updated_at":    time.Now(),
 			},
 			"$setOnInsert": bson.M{
 				"identifier": movie.Identifier,
@@ -127,11 +138,14 @@ func (r *movieRepository) BulkUpsert(ctx context.Context, movies []model.Movie) 
 	return nil
 }
 
+
 /**
  * FindAll returns movies with skip/limit for pagination.
  * Results are sorted by title alphabetically for a consistent UX.
  */
 func (r *movieRepository) FindAll(ctx context.Context, skip, limit int64) ([]model.Movie, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	opts := options.Find().
 		SetSkip(skip).
 		SetLimit(limit).
@@ -153,6 +167,8 @@ func (r *movieRepository) FindAll(ctx context.Context, skip, limit int64) ([]mod
 
 // FindByID fetches a single movie by its MongoDB _id.
 func (r *movieRepository) FindByID(ctx context.Context, id primitive.ObjectID) (*model.Movie, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()	
 	var movie model.Movie
 	err := r.col.FindOne(ctx, bson.M{"_id": id}).Decode(&movie)
 	if err != nil {
@@ -166,6 +182,8 @@ func (r *movieRepository) FindByID(ctx context.Context, id primitive.ObjectID) (
 
 // FindByIdentifier fetches a movie by its Internet Archive identifier string.
 func (r *movieRepository) FindByIdentifier(ctx context.Context, identifier string) (*model.Movie, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()	
 	var movie model.Movie
 	err := r.col.FindOne(ctx, bson.M{"identifier": identifier}).Decode(&movie)
 	if err != nil {
@@ -179,6 +197,8 @@ func (r *movieRepository) FindByIdentifier(ctx context.Context, identifier strin
 
 // CountAll returns the total document count for pagination metadata.
 func (r *movieRepository) CountAll(ctx context.Context) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()	
 	count, err := r.col.CountDocuments(ctx, bson.M{})
 	if err != nil {
 		return 0, fmt.Errorf("movie repo: count failed: %w", err)
@@ -189,11 +209,15 @@ func (r *movieRepository) CountAll(ctx context.Context) (int64, error) {
 // FindByGenre returns movies filtered by genre with pagination.
 // Genre filtering is case-insensitive using regex.
 func (r *movieRepository) FindByGenre(ctx context.Context, genre string, skip, limit int64) ([]model.Movie, int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()	
 	// Build case-insensitive regex filter for genre
 	query := bson.M{
 		"genres": bson.M{
-			"$regex":   genre,
-			"$options": "i", // case-insensitive
+			"$elemMatch": bson.M{
+				"$regex": genre,
+				"$options": "i",
+			},
 		},
 	}
 
@@ -231,6 +255,8 @@ func (r *movieRepository) FindByGenre(ctx context.Context, genre string, skip, l
 
 // SearchMovies executes a dynamic query built from SearchFilter.
 func (r *movieRepository) SearchMovies(ctx context.Context, filter model.SearchFilter) (model.PaginatedMovies, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()	
 	// 1. Build the BSON filter
 	query := bson.D{}
 
@@ -244,7 +270,7 @@ func (r *movieRepository) SearchMovies(ctx context.Context, filter model.SearchF
 	if filter.Genre != "" {
 		// Case-insensitive regex so "action", "Action", "ACTION" all match.
 		query = append(query, bson.E{
-			Key: "genre",
+			Key: "genres",
 			Value: bson.D{
 				{Key: "$regex", Value: filter.Genre},
 				{Key: "$options", Value: "i"},
@@ -254,6 +280,9 @@ func (r *movieRepository) SearchMovies(ctx context.Context, filter model.SearchF
 
 	// 2. Pagination maths
 	skip := int64((filter.Page - 1) * filter.Limit)
+	if skip > 10000 {
+		return model.PaginatedMovies{}, fmt.Errorf("page too large")
+	}
 
 	// 3. Find options (sort + skip + limit)
 	findOpts := options.Find().
@@ -268,6 +297,7 @@ func (r *movieRepository) SearchMovies(ctx context.Context, filter model.SearchF
 		})
 		findOpts.SetSort(bson.D{
 			{Key: "score", Value: bson.D{{Key: "$meta", Value: "textScore"}}},
+			{Key: "_id", Value: -1},
 		})
 	} else {
 		findOpts.SetSort(bson.D{{Key: "_id", Value: -1}})

@@ -241,7 +241,14 @@ func (s *movieService) SearchMovies(ctx context.Context, filter model.SearchFilt
 
 // isOnlySpecialChars checks if a string consists solely of special characters (no letters or digits).
 func isOnlySpecialChars(s string) bool {
-	panic("unimplemented")
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') ||
+		   (r >= 'A' && r <= 'Z') ||
+		   (r >= '0' && r <= '9') {
+			return false
+		}
+	}
+	return true
 }
 
 // Sentinel errors — typed errors the handler can check with errors.Is()
