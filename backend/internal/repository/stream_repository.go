@@ -20,6 +20,7 @@ import (
 */
 type StreamRepository interface {
 	GetMovieAndIncrementView(ctx context.Context, movieID primitive.ObjectID) (*model.Movie, error)
+	FindByID(ctx context.Context, id primitive.ObjectID) (*model.Movie, error)
 }
 
 // streamRepository is the concrete MongoDB implementation.
@@ -44,8 +45,14 @@ func NewStreamRepository(db *mongo.Database) StreamRepository {
  * This is safe under high concurrency — MongoDB's $inc is atomic.
 */
 func (r *streamRepository) GetMovieAndIncrementView(ctx context.Context, movieID primitive.ObjectID) (*model.Movie, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	// Build filter: match by _id
-	filter := bson.M{"_id": movieID}
+	filter := bson.M{
+		"_id":        movieID,
+		"stream_url": bson.M{"$ne": ""},
+	}
 
 	// Build update: atomically increment view_count by 1, update updated_at timestamp
 	update := bson.M{
@@ -58,7 +65,17 @@ func (r *streamRepository) GetMovieAndIncrementView(ctx context.Context, movieID
 	 * This gives us the latest view_count in the response.
 	*/
 	opts := options.FindOneAndUpdate().
-		SetReturnDocument(options.After)
+		SetReturnDocument(options.After).
+		SetProjection(bson.M{
+			"_id":          1,
+			"title":        1,
+			"stream_url":   1,
+			"thumbnail_url": 1,
+			"genres":       1,
+			"year":         1,
+			"director":     1,
+			"view_count":   1,
+		})
 
 	var movie model.Movie
 	err := r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&movie)
@@ -66,6 +83,29 @@ func (r *streamRepository) GetMovieAndIncrementView(ctx context.Context, movieID
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			// Return a clean sentinel so the service layer can give a 404
 			return nil, ErrMovieNotFound
+		}
+		return nil, err
+	}
+
+	return &movie, nil
+}
+
+/**
+ * FindByID finds a movie by its ID.
+ * This is used as a fallback when GetMovieAndIncrementView returns ErrMovieNotFound.
+ * If the movie exists but has no stream_url, we return nil, nil so the service layer
+ * can distinguish between "movie not found" and "stream not available".
+*/
+func (r *streamRepository) FindByID(ctx context.Context, id primitive.ObjectID) (*model.Movie, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	var movie model.Movie
+	// find movie by id
+	err := r.collection.FindOne(ctx, bson.M{"_id": id}).Decode(&movie)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, nil
 		}
 		return nil, err
 	}

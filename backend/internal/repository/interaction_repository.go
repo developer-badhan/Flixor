@@ -86,6 +86,14 @@ func (r *interactionRepository) ensureIndexes(ctx context.Context) {
 		Keys:    bson.D{{Key: "user_id", Value: 1}},
 		Options: options.Index().SetUnique(true),
 	})
+
+	// watch_events: flat collection for analytics → index on watched_at for time-based queries
+	r.historyEventsCol.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "movie_id", Value: 1},
+			{Key: "watched_at", Value: -1},
+		},
+	})	
 }
 
 /**
@@ -233,6 +241,7 @@ func (r *interactionRepository) GetReaction(
 * We slice from the end in the service layer to keep only the latest N entries.
 */
 const maxHistoryEvents = 100
+var now = time.Now()
 
 /**
  * AddToHistory prepends a new watch event to the user's history array.
@@ -245,7 +254,7 @@ func (r *interactionRepository) AddToHistory(
 ) error {
 	newEvent := model.WatchEvent{
 		MovieID:   movieID,
-		WatchedAt: time.Now(),
+		WatchedAt: now,
 	}
 
 	_, err := r.historyCol.UpdateOne(
@@ -270,7 +279,7 @@ func (r *interactionRepository) AddToHistory(
 	_, err2 := r.historyEventsCol.InsertOne(ctx, bson.M{
 		"user_id":    userID,
 		"movie_id":   movieID,
-		"watched_at": time.Now(),
+		"watched_at": now,
 	})
 	if err2 != nil {
 		return err2

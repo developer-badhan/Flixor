@@ -57,7 +57,19 @@ func (s *streamService) GetStreamInfo(ctx context.Context, movieID string) (*Str
 	movie, err := s.streamRepo.GetMovieAndIncrementView(ctx, objID)
 	if err != nil {
 		if errors.Is(err, repository.ErrMovieNotFound) {
-			return nil, ErrMovieNotFound
+			// fallback: check if movie exists but has no stream
+			existingMovie, findErr := s.streamRepo.FindByID(ctx, objID)
+
+			if findErr == nil && existingMovie != nil {
+				return nil, ErrStreamNotAvailable
+			}
+
+			if existingMovie == nil {
+				return nil, ErrMovieNotFound
+			}
+
+			// Movie exists but has no stream URL
+			return nil, ErrStreamNotAvailable
 		}
 		// Unexpected DB error — return as-is so the handler can log it
 		return nil, err
