@@ -57,8 +57,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	ip := c.ClientIP()
+	userAgent := c.GetHeader("User-Agent")
+
 	// Delegate to service — no business logic here
-	response, err := h.authService.Register(c.Request.Context(), &req)
+	response, err := h.authService.Register(c.Request.Context(), &req, ip, userAgent)
 	if err != nil {
 		statusCode := http.StatusInternalServerError
 		if err.Error() == "email already registered" {
@@ -86,7 +89,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	response, err := h.authService.Login(c.Request.Context(), &req)
+	ip := c.ClientIP()
+	userAgent := c.GetHeader("User-Agent")
+
+	response, err := h.authService.Login(c.Request.Context(), &req, ip, userAgent)
 	if err != nil {
 		// Invalid credentials → 401 Unauthorized
 		statusCode := http.StatusUnauthorized
@@ -192,28 +198,6 @@ func (h *AuthHandler) LogoutAll(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "all sessions revoked successfully",
-	})
-}
-
-/**
- * Me handles GET /api/v1/auth/me
- * Returns the currently authenticated user's profile.
- * Protected by auth middleware — user_id is guaranteed to be in context.
-*/
-func (h *AuthHandler) Me(c *gin.Context) {
-	/**
-	 * The middleware already validated the JWT and injected these values.
-	 * If middleware is missing from the route, these will be empty strings —
-	 * which is why every protected route must go through the middleware.
-	*/
-	userID := c.GetString("user_id")
-	email := c.GetString("email")
-
-	c.JSON(http.StatusOK, gin.H{
-		"data": gin.H{
-			"user_id": userID,
-			"email":   email,
-		},
 	})
 }
 

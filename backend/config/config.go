@@ -13,13 +13,20 @@ import (
  * Every other package import this, never call os.Getenv() directly elsewhere.
  */
 type Config struct {
-	Port           string
-	AppEnv         string
-	MongoURI       string
-	DBName         string
-	JWTSecret      string
-	JWTExpiryHours int
-	GEMINI_API_KEY string
+	Port           		string
+	AppEnv         		string
+	MongoURI       		string
+	DBName         		string
+	JWTSecret      		string
+	JWTExpiryHours 		int
+	GEMINI_API_KEY 		string
+	CloudinaryCloudName string
+	CloudinaryAPIKey    string
+	CloudinaryAPISecret string
+	EmailHost     		string
+	EmailPort     		int
+	EmailUser     		string
+	EmailPassword 		string
 }
 
 /**
@@ -39,14 +46,26 @@ func Load() *Config {
 		log.Fatal("JWT_EXPIRY_HOURS must be a valid integer")
 	}
 
+	emailPort, err := strconv.Atoi(getEnv("EMAIL_PORT", "465"))
+	if err != nil {
+		log.Fatal("EMAIL_PORT must be a valid integer")
+	}
+
 	cfg := &Config{
-		Port:           getEnv("PORT", "5000"),
-		AppEnv:         getEnv("APP_ENV", "development"),
-		MongoURI:       getEnv("MONGO_URI", ""),
-		DBName:         getEnv("DB_NAME", "flixor"),
-		JWTSecret:      getEnv("JWT_SECRET", ""),
-		JWTExpiryHours: jwtExpiry,
-		GEMINI_API_KEY: getEnv("GEMINI_API_KEY", ""),
+		Port:           		getEnv("PORT", "5000"),
+		AppEnv:         		getEnv("APP_ENV", "development"),
+		MongoURI:       		getEnv("MONGO_URI", ""),
+		DBName:         		getEnv("DB_NAME", "flixor"),
+		JWTSecret:      		getEnv("JWT_SECRET", ""),
+		JWTExpiryHours: 		jwtExpiry,
+		GEMINI_API_KEY: 		getEnv("GEMINI_API_KEY", ""),
+		CloudinaryCloudName: 	getEnv("CLOUDINARY_CLOUD_NAME", ""),
+		CloudinaryAPIKey:    	getEnv("CLOUDINARY_API_KEY", ""),
+		CloudinaryAPISecret: 	getEnv("CLOUDINARY_API_SECRET", ""),
+		EmailHost:     			getEnv("EMAIL_HOST", "smtp.gmail.com"),
+		EmailPort:     			emailPort,
+		EmailUser:     			getEnv("EMAIL_HOST_USER", ""),
+		EmailPassword: 			getEnv("EMAIL_HOST_PASSWORD", ""),
 	}
 
 	// Validate required fields, crash early with a clear message
@@ -71,6 +90,12 @@ func (c *Config) validate() {
 	}
 	if c.GEMINI_API_KEY == "" {
 		log.Fatal("GEMINI_API_KEY is required but not set in environment")
+	}
+	if c.CloudinaryCloudName == "" || c.CloudinaryAPIKey == "" || c.CloudinaryAPISecret == "" {
+		log.Fatal("CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET are all required")
+	}
+	if c.EmailUser == "" || c.EmailPassword == "" {
+		log.Fatal("EMAIL_HOST_USER and EMAIL_HOST_PASSWORD are required")
 	}
 }
 

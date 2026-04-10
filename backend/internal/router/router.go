@@ -21,6 +21,7 @@ var startTime = time.Now()
 func SetupRoutes(
 	r *gin.Engine,
 	authHandler 			*handler.AuthHandler,
+	userHandler 			*handler.UserHandler,
 	movieHandler 			*handler.MovieHandler,
 	streamHandler 			*handler.StreamHandler,
 	interactionHandler 		*handler.InteractionHandler,
@@ -76,8 +77,24 @@ func SetupRoutes(
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.Refresh)
-		auth.POST("/logout", authHandler.Logout)
-		auth.POST("/logout-all", authHandler.LogoutAll)
+		
+		protected := auth.Group("/")
+		protected.Use(middleware.Auth(jwtSecret))
+		{
+			auth.POST("/logout", authHandler.Logout)
+			protected.POST("/logout-all", authHandler.LogoutAll)
+		}
+	}
+
+	// User profile routes (all protected)
+	user := v1.Group("/user")
+	user.Use(middleware.Auth(jwtSecret))
+	{
+		user.GET("/me", userHandler.Me)                            
+		user.PATCH("/profile", userHandler.UpdateProfile)         
+		user.POST("/profile-picture", userHandler.UploadProfilePicture) 
+		user.POST("/send-otp", userHandler.SendOTP)               
+		user.POST("/verify-otp", userHandler.VerifyOTP)           
 	}
 
 	// Movie & Stream routes

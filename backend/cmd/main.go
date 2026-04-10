@@ -9,14 +9,18 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
+
 	"github.com/developer-badhan/Flixor/config"
 	"github.com/developer-badhan/Flixor/internal/handler"
 	"github.com/developer-badhan/Flixor/internal/repository"
 	"github.com/developer-badhan/Flixor/internal/router"
 	"github.com/developer-badhan/Flixor/internal/middleware"
 	"github.com/developer-badhan/Flixor/internal/service"
+	"github.com/developer-badhan/Flixor/pkg/cloudinary"
+	"github.com/developer-badhan/Flixor/pkg/email"
 	"github.com/developer-badhan/Flixor/pkg/logger"
-	"github.com/gin-gonic/gin"
 )
 
 /**
@@ -60,13 +64,26 @@ func main() {
 	defer db.Disconnect()
 
 	// Repositories
-	userRepo := repository.NewUserRepository(db)
+	userRepo := repository.NewUserRepository(db.Database)
 	movieRepo := repository.NewMovieRepository(db.Database)
 	streamRepo := repository.NewStreamRepository(db.Database)
 	interactionRepo := repository.NewInteractionRepository(db.Database)
 	recoRepo := repository.NewRecommendationRepository(db.Database)
 	analyticsRepo := repository.NewAnalyticsRepository(db.Database)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db.Database)
+
+	// Initialize Cloudinary client
+	cldClient, err := cloudinary.NewClient(
+		cfg.CloudinaryCloudName,
+		cfg.CloudinaryAPIKey,
+		cfg.CloudinaryAPISecret,
+	)
+	if err != nil {
+		log.Fatalf("failed to initialise Cloudinary: %v", err)
+	}
+
+	// Initialize mailer
+	mailer := email.NewMailer(cfg.EmailHost, cfg.EmailPort, cfg.EmailUser, cfg.EmailPassword)
 
 	// Ensure DB Indexes (run at startup, idempotent)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -78,6 +95,7 @@ func main() {
 
 	// Services
 	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, cfg)
+	userSvc := service.NewUserService(userRepo, cldClient, mailer)
 	movieSvc := service.NewMovieService(movieRepo)
 	streamSvc := service.NewStreamService(streamRepo)
 	interactionSvc := service.NewInteractionService(interactionRepo)
@@ -86,6 +104,7 @@ func main() {
 
 	// Handlers
 	authHandler := handler.NewAuthHandler(authSvc)
+	userHandler := handler.NewUserHandler(userSvc)
 	movieHandler := handler.NewMovieHandler(movieSvc)
 	streamHandler := handler.NewStreamHandler(streamSvc)
 	interactionHandler := handler.NewInteractionHandler(interactionSvc)
@@ -121,6 +140,7 @@ func main() {
 	router.SetupRoutes(
 		r,
 		authHandler,
+		userHandler,
 		movieHandler,
 		streamHandler,
 		interactionHandler,
