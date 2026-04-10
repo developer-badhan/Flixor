@@ -4,42 +4,48 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
 /**
- * AccessTokenClaims are the JWT payload fields.
- * We keep it minimal — large payloads slow down every request.
+ * Claims defines exactly what lives inside our JWT payload.
+ * We embed jwt.RegisteredClaims to get standard fields like ExpiresAt
+ * for free — then add our own application-specific fields on top.
 */
-type AccessTokenClaims struct {
+type Claims struct {
 	UserID string `json:"user_id"`
 	Email  string `json:"email"`
 	jwt.RegisteredClaims
 }
 
+// Access Token TTL
+const AccessTokenTTLSeconds = 15 * 60 // 900 seconds
+
+// Refresh Token TTL
+const RefreshTokenTTL = 7 * 24 * time.Hour // 7 days
+
 /**
  * GenerateAccessToken creates a signed JWT that expires in 15 minutes.
  * Short TTL limits the damage window if a token is stolen.
 */
-func GenerateAccessToken(userID, email string) (string, error) {
-	secret := os.Getenv("JWT_SECRET")
+func GenerateAccessToken(userID, email, secret string) (string, error) {
 	if secret == "" {
-		return "", fmt.Errorf("JWT_SECRET not set")
+		return "", fmt.Errorf("JWT_SECRET cannot be empty")
 	}
 
 	/**
 	 * Create a new JWT token with the given user ID and email.
 	 * The token is signed with the JWT_SECRET.
 	*/
-	claims := AccessTokenClaims{
+	claims := Claims{
 		UserID: userID,
 		Email:  email,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenTTLSeconds * time.Second)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Issuer:    "flixor",
 		},
@@ -48,34 +54,6 @@ func GenerateAccessToken(userID, email string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
 }
-
-/**
- * ValidateAccessToken parses and validates a JWT string.
- * Returns the claims on success, or a descriptive error on failure.
-*/
-func ValidateAccessToken(tokenStr string) (*AccessTokenClaims, error) {
-	secret := os.Getenv("JWT_SECRET")
-
-	token, err := jwt.ParseWithClaims(tokenStr, &AccessTokenClaims{}, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-		}
-		return []byte(secret), nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	claims, ok := token.Claims.(*AccessTokenClaims)
-	if !ok || !token.Valid {
-		return nil, fmt.Errorf("invalid token claims")
-	}
-
-	return claims, nil
-}
-
-// Refresh Token TTL
-const refreshTokenTTL = 7 * 24 * time.Hour // 7 days
 
 /**
  * GenerateRefreshToken creates a cryptographically random 32-byte token
@@ -90,7 +68,7 @@ func GenerateRefreshToken() (rawToken string, hash string, expiresAt time.Time, 
 
 	rawToken = hex.EncodeToString(b)
 	hash = HashToken(rawToken)
-	expiresAt = time.Now().Add(refreshTokenTTL)
+	expiresAt = time.Now().Add(RefreshTokenTTL)
 	return rawToken, hash, expiresAt, nil
 }
 
@@ -105,8 +83,57 @@ func HashToken(raw string) string {
 
 // RefreshTokenTTLSeconds returns the TTL as an integer for API responses.
 func RefreshTokenTTLSeconds() int {
-	return int(refreshTokenTTL.Seconds())
+	return int(RefreshTokenTTL.Seconds())
 }
 
-// AccessTokenTTLSeconds is the access token TTL in seconds (for TokenResponse).
-const AccessTokenTTLSeconds = 15 * 60 // 900 seconds
+/**
+ * ValidateToken parses a JWT string and returns the claims if valid.
+ * Returns an error if the token is expired, tampered with, or malformed.
+ * The middleware calls this on every protected request.
+*/
+func ValidateToken(tokenString, secret string) (*Claims, error) {
+	if tokenString == "" {
+		return nil, errors.New("token cannot be empty")
+	}
+	if secret == "" {
+		return nil, errors.New("JWT secret cannot be empty")
+	}
+
+	/**
+	 * Parse the token — the key function runs first to provide the signing key.
+	 * Checking the method inside the key function is critical:
+	 * if an attacker sends a token signed with "alg: none", we reject it
+	 * before even attempting verification. This prevents the "alg:none" attack.
+	*/
+	token, err := jwt.ParseWithClaims(
+		tokenString,
+		&Claims{},
+		func(token *jwt.Token) (interface{}, error) {
+			// Reject anything that isn't HMAC — never trust the header blindly
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, errors.New("unexpected signing method")
+			}
+			return []byte(secret), nil
+		},
+	)
+
+	if err != nil {
+		/**
+		 * jwt library returns specific errors for expiry vs tampering.
+		 * We collapse them into two clean messages — enough info for the
+		 * client to act, not enough to help an attacker diagnose failures.
+		*/
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, errors.New("token has expired")
+		}
+		return nil, errors.New("token is invalid")
+	}
+
+	// Type-assert the claims back to our Claims struct
+	claims, ok := token.Claims.(*Claims)
+	if !ok || !token.Valid {
+		return nil, errors.New("token is invalid")
+	}
+
+	return claims, nil
+}
