@@ -1,26 +1,28 @@
 import { useState, useEffect } from 'react';
 
 export function useAuth() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [token, setToken] = useState<string | null>(
+    localStorage.getItem('accessToken')
+  );
 
-  useEffect(() => {
-    if (token) {
-      setIsAuthenticated(true);
-      localStorage.setItem('token', token);
-    } else {
-      setIsAuthenticated(false);
-      localStorage.removeItem('token');
-    }
-  }, [token]);
+  const isAuthenticated = !!token;
 
-  const login = (newToken: string) => {
-    setToken(newToken);
+  const login = (accessToken: string) => {
+    setToken(accessToken);
+    localStorage.setItem('accessToken', accessToken);
   };
 
   const logout = () => {
     setToken(null);
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
   };
 
-  return { isAuthenticated, token, login, logout };
+  const logoutAll = () => {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    setToken(null);
+  };
+
+  return { isAuthenticated, token, login, logout, logoutAll };
 }

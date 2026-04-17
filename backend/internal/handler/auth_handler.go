@@ -73,6 +73,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	// 201 Created — a new resource was created
 	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
 		"message": "account created successfully",
 		"data":    response,
 	})
@@ -105,6 +106,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// 200 OK — existing resource accessed successfully
 	c.JSON(http.StatusOK, gin.H{
+		"success": true,
 		"message": "login successful",
 		"data":    response,
 	})

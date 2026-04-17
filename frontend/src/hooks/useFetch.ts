@@ -12,20 +12,20 @@ export function useFetch<T>(url: string) {
       try {
         setLoading(true);
         const response = await api.get(url);
-        if (isMounted) setData(response.data);
+        const payload = response.data;
+        if (isMounted) setData(payload);
       } catch (err: any) {
         if (isMounted) setError(err);
       } finally {
         if (isMounted) setLoading(false);
       }
     };
-
     fetchData();
-
     return () => {
       isMounted = false;
     };
-  }, [url]);
+  }, []);
 
   return { data, loading, error };
+
 }

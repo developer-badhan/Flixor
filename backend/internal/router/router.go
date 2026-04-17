@@ -81,7 +81,7 @@ func SetupRoutes(
 		protected := auth.Group("/")
 		protected.Use(middleware.Auth(jwtSecret))
 		{
-			auth.POST("/logout", authHandler.Logout)
+			protected.POST("/logout", authHandler.Logout)
 			protected.POST("/logout-all", authHandler.LogoutAll)
 		}
 	}

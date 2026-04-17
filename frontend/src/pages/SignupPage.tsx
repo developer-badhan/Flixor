@@ -18,8 +18,8 @@ const SignupPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await registerService({ name, email, password });
-      login(data.token);
+      const data = await registerService({ username: name, email, password });
+      login(data.data.access_token, data.data.refresh_token);
       navigate('/send-otp');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to sign up. Please try again.');
