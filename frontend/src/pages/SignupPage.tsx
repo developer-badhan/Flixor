@@ -5,21 +5,48 @@ import { useNavigate, Link } from 'react-router-dom';
 import { register as registerService } from '../features/auth/services/authService';
 
 const SignupPage: React.FC = () => {
-  const [email, setEmail] = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const [name, setName]         = useState('');
+  const [error, setError]       = useState<string | null>(null);
+  const [loading, setLoading]   = useState(false);
+
+  /** 
+  * BUG FIX 1: was `const { login } = useAuth()`
+  * Same problem as LoginPage — old hook had login(accessToken) with isolated state.
+  * setTokens() from AuthContext updates shared state + saves both tokens to localStorage.
+  */
+  const { setTokens } = useAuth();
+
   const navigate = useNavigate();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
     try {
       const data = await registerService({ username: name, email, password });
-      login(data.data.access_token, data.data.refresh_token);
+      /** 
+      * `data` is ALREADY the unwrapped TokenResponse:
+      * { access_token, refresh_token, token_type, expires_in }
+      *
+      * How the unwrapping happens:
+      *   Backend sends: { success: true, data: { access_token, ... } }
+      *   api.ts interceptor: response.data = response.data.data  (one level down)
+      *   registerService returns: response.data  (already the inner object)
+      *
+      * So `data` = { access_token, refresh_token, ... }  ← the final object
+      *
+      * BUG FIX 2: was `login(data.data.access_token, data.data.refresh_token)`
+      * Two problems:
+      *   a) `data.data` is undefined — the interceptor already unwrapped one level,
+      *      so accessing `.data` again gives undefined → TypeError at runtime
+      *      (this crashed silently because the catch block swallowed the error)
+      *   b) `login` no longer exists on context — replaced by `setTokens`
+      */
+      setTokens(data.access_token, data.refresh_token);  
+
       navigate('/send-otp');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to sign up. Please try again.');
@@ -29,13 +56,16 @@ const SignupPage: React.FC = () => {
   };
 
   return (
-    <div 
+    <div
       className="min-h-screen flex items-center justify-center bg-cover bg-center relative"
-      style={{ backgroundImage: 'url(https://assets.nflxext.com/ffe/siteui/vlv3/28b69a57-cadf-43d9-8a95-e5f2e11199de/3160e1fd-1c9f-4db3-96b4-2fc57ed7cb4c/US-en-20241008-TRIFECTA-perspective_2bf7aab7-d078-43ec-b6a8-a5a40bf5675c_small.jpg)' }}
+      style={{
+        backgroundImage:
+          'url(https://assets.nflxext.com/ffe/siteui/vlv3/28b69a57-cadf-43d9-8a95-e5f2e11199de/3160e1fd-1c9f-4db3-96b4-2fc57ed7cb4c/US-en-20241008-TRIFECTA-perspective_2bf7aab7-d078-43ec-b6a8-a5a40bf5675c_small.jpg)',
+      }}
     >
-      <div className="absolute inset-0 bg-black/60 sm:bg-black/40"></div>
-      
-      <motion.div 
+      <div className="absolute inset-0 bg-black/60 sm:bg-black/40" />
+
+      <motion.div
         className="w-full max-w-md mx-4 relative z-10"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -43,14 +73,18 @@ const SignupPage: React.FC = () => {
       >
         <div className="bg-black/75 p-10 sm:p-16 rounded-md shadow-2xl">
           <h2 className="text-3xl font-bold mb-8 text-white">Sign Up</h2>
-          
-          {error && <div className="bg-flixor-red p-3 rounded mb-4 text-white text-sm">{error}</div>}
-          
+
+          {error && (
+            <div className="bg-flixor-red p-3 rounded mb-4 text-white text-sm">
+              {error}
+            </div>
+          )}
+
           <form onSubmit={handleSignup} className="space-y-4">
-             <div>
-              <input 
-                type="text" 
-                placeholder="Full Name" 
+            <div>
+              <input
+                type="text"
+                placeholder="Full Name"
                 className="w-full bg-[#333333] text-white px-4 py-3 rounded focus:outline-none focus:ring-2 focus:ring-white/30"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -58,9 +92,9 @@ const SignupPage: React.FC = () => {
               />
             </div>
             <div>
-              <input 
-                type="email" 
-                placeholder="Email address" 
+              <input
+                type="email"
+                placeholder="Email address"
                 className="w-full bg-[#333333] text-white px-4 py-3 rounded focus:outline-none focus:ring-2 focus:ring-white/30"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -68,26 +102,31 @@ const SignupPage: React.FC = () => {
               />
             </div>
             <div>
-              <input 
-                type="password" 
-                placeholder="Password" 
+              <input
+                type="password"
+                placeholder="Password"
                 className="w-full bg-[#333333] text-white px-4 py-3 rounded focus:outline-none focus:ring-2 focus:ring-white/30"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="w-full bg-flixor-red hover:bg-flixor-hover text-white font-bold py-3 rounded transition-colors mt-6"
               disabled={loading}
             >
               {loading ? 'Signing Up...' : 'Sign Up'}
             </button>
           </form>
-          
+
           <div className="mt-16 text-[#8c8c8c]">
-            <p>Already have an account? <Link to="/login" className="text-white hover:underline">Sign in.</Link></p>
+            <p>
+              Already have an account?{' '}
+              <Link to="/login" className="text-white hover:underline">
+                Sign in.
+              </Link>
+            </p>
           </div>
         </div>
       </motion.div>

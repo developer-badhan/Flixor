@@ -1,28 +1,7 @@
-import { useState, useEffect } from 'react';
-
-export function useAuth() {
-  const [token, setToken] = useState<string | null>(
-    localStorage.getItem('accessToken')
-  );
-
-  const isAuthenticated = !!token;
-
-  const login = (accessToken: string) => {
-    setToken(accessToken);
-    localStorage.setItem('accessToken', accessToken);
-  };
-
-  const logout = () => {
-    setToken(null);
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-  };
-
-  const logoutAll = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    setToken(null);
-  };
-
-  return { isAuthenticated, token, login, logout, logoutAll };
-}
+/**
+ *
+ * 1. If user login or sign up it will store access token and refresh token in localStorage.
+ * 2. If user logout or logoutAll it will remove access token and refresh token from localStorage.
+ * 3. If user refresh token is expired it will automatically refresh token and store in localStorage.
+ */
+export { useAuthContext as useAuth } from '../context/AuthContext';
