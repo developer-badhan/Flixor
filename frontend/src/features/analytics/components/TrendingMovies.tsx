@@ -5,24 +5,31 @@ import { Link } from 'react-router-dom';
 import { useTrending, type TrendingWindow } from '../../../hooks/useAnalytics';
 import type { TrendingMovie } from '../types/analytics.types';
 
-// ─── Window Tab Config ────────────────────────────────────────────────────────
+/** 
+ *   BUG FIX (MovieRow, info section):
+ *   BEFORE: movie.genre.slice(0, 2).join(', ')
+ *   AFTER:  (movie.genre ?? []).slice(0, 2).join(', ')
+ *   
+ *   Identical root cause as MostWatched.tsx — MongoDB returns genre: null
+ *   for movies synced without genre data. `?? []` falls back to empty array,
+ *   so the separator dot is also hidden when there are no genres.
+*/
 
+//  Window Tab Config 
 const WINDOWS: { value: TrendingWindow; label: string }[] = [
   { value: '1d', label: '24 Hours' },
   { value: '7d', label: '7 Days' },
   { value: '30d', label: '30 Days' },
 ];
 
-// ─── Format helpers ───────────────────────────────────────────────────────────
-
+//  Format helpers 
 function fmt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
   return n.toString();
 }
 
-// ─── Rank badge color ─────────────────────────────────────────────────────────
-
+//  Rank badge color 
 function rankStyle(rank: number): { bg: string; text: string } {
   if (rank === 1) return { bg: '#e50914', text: '#fff' };
   if (rank === 2) return { bg: '#9ca3af', text: '#000' };
@@ -30,8 +37,7 @@ function rankStyle(rank: number): { bg: string; text: string } {
   return { bg: '#1f1f1f', text: '#9ca3af' };
 }
 
-// ─── Skeleton Row ─────────────────────────────────────────────────────────────
-
+//  Skeleton Row 
 const SkeletonRow: React.FC<{ i: number }> = ({ i }) => (
   <div
     className="flex items-center gap-4 p-4 rounded-xl bg-flixor-gray/20 animate-pulse"
@@ -50,10 +56,11 @@ const SkeletonRow: React.FC<{ i: number }> = ({ i }) => (
   </div>
 );
 
-// ─── Movie Row ────────────────────────────────────────────────────────────────
-
+//  Movie Row 
 const MovieRow: React.FC<{ movie: TrendingMovie; index: number }> = ({ movie, index }) => {
   const rs = rankStyle(movie.rank);
+  const genres = movie.genre ?? []; // BUG FIX: guard null before any array operation
+
   return (
     <motion.div
       initial={{ opacity: 0, x: -16 }}
@@ -83,7 +90,9 @@ const MovieRow: React.FC<{ movie: TrendingMovie; index: number }> = ({ movie, in
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-flixor-gray">
-              <span className="text-xs text-flixor-lightGray text-center px-1 leading-tight">{movie.title}</span>
+              <span className="text-xs text-flixor-lightGray text-center px-1 leading-tight">
+                {movie.title}
+              </span>
             </div>
           )}
         </div>
@@ -94,7 +103,15 @@ const MovieRow: React.FC<{ movie: TrendingMovie; index: number }> = ({ movie, in
             {movie.title}
           </p>
           <p className="text-xs text-flixor-lightGray mt-0.5">
-            {movie.year} · {movie.genre.slice(0, 2).join(', ')}
+            {/*
+              BUG FIX:
+              BEFORE: movie.genre.slice(0, 2).join(', ')  → crash when genre is null
+              AFTER:  genres (= movie.genre ?? [])        → safe empty array fallback
+
+              Dot separator is also conditional — avoids "2019 · " with nothing after it.
+            */}
+            {movie.year}
+            {genres.length > 0 && <> · {genres.slice(0, 2).join(', ')}</>}
           </p>
         </div>
 
@@ -114,8 +131,7 @@ const MovieRow: React.FC<{ movie: TrendingMovie; index: number }> = ({ movie, in
   );
 };
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-
+//  Main Component 
 const TrendingMovies: React.FC = () => {
   const [activeWindow, setActiveWindow] = useState<TrendingWindow>('7d');
   const { data, loading, error } = useTrending({ window: activeWindow, limit: 10 });
@@ -131,7 +147,9 @@ const TrendingMovies: React.FC = () => {
           <div>
             <h2 className="text-lg font-bold text-white">Trending Now</h2>
             {data && (
-              <p className="text-xs text-flixor-lightGray">{data.window_label} · {data.total_results} movies</p>
+              <p className="text-xs text-flixor-lightGray">
+                {data.window_label} · {data.total_results} movies
+              </p>
             )}
           </div>
         </div>
@@ -143,9 +161,7 @@ const TrendingMovies: React.FC = () => {
               key={w.value}
               onClick={() => setActiveWindow(w.value)}
               className="relative px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200"
-              style={{
-                color: activeWindow === w.value ? '#fff' : '#b3b3b3',
-              }}
+              style={{ color: activeWindow === w.value ? '#fff' : '#b3b3b3' }}
             >
               {activeWindow === w.value && (
                 <motion.div

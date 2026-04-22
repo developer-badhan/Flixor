@@ -2,11 +2,20 @@
 
 export type TrendingWindow = '1d' | '7d' | '30d';
 
+/**
+ * - BUG FIX: genre was typed as `string[]` in both TrendingMovie and MostWatchedMovie.
+ * - MongoDB documents can have genre = null when the field was never set on a movie.
+ * - TypeScript trusted the type and gave no warning — runtime crashed with:
+ *   "Cannot read properties of null (reading 'slice')"
+ * - Fix: type genre as `string[] | null` everywhere, so components are
+ * - forced to guard against null before calling .slice() or .join().
+ */
+
 export interface TrendingMovie {
   id: string;
   title: string;
-  genre: string[];
-  thumbnail: string;    // analytics model uses `thumbnail`, NOT `thumbnail_url`
+  genre: string[] | null;  
+  thumbnail: string;
   year: string;
   views_in_window: number;
   total_views: number;
@@ -15,17 +24,16 @@ export interface TrendingMovie {
 
 export interface TrendingResponse {
   window: TrendingWindow;
-  window_label: string;   // e.g. "Last 7 days"
+  window_label: string;
   total_results: number;
   movies: TrendingMovie[];
 }
 
-// ─── Most Watched ─────────────────────────────────────────────────────────────
-
+//  Most Watched 
 export interface MostWatchedMovie {
   id: string;
   title: string;
-  genre: string[];
+  genre: string[] | null; 
   thumbnail: string;
   year: string;
   total_views: number;
@@ -37,8 +45,7 @@ export interface MostWatchedResponse {
   movies: MostWatchedMovie[];
 }
 
-// ─── Top Genres ───────────────────────────────────────────────────────────────
-
+//  Top Genres 
 export interface GenreStat {
   genre: string;
   movie_count: number;
@@ -51,8 +58,7 @@ export interface TopGenresResponse {
   genres: GenreStat[];
 }
 
-// ─── Platform Stats ───────────────────────────────────────────────────────────
-
+//  Platform Stats 
 export interface PlatformStats {
   total_movies: number;
   total_users: number;
@@ -61,8 +67,7 @@ export interface PlatformStats {
   total_likes: number;
 }
 
-// ─── Query Params ─────────────────────────────────────────────────────────────
-
+// Query Params
 export interface TrendingParams {
   window?: TrendingWindow;
   limit?: number;
