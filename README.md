@@ -1,5 +1,7 @@
 # 🎬 Flixor — AI-Powered Movie Streaming & Discovery Platform
 
+![image alt](https://github.com/developer-badhan/Flixor/blob/e3814d97d4702c2ae5877828055d3021edc16196/frontend/public/logo.png)
+
 > Smart movie discovery meets scalable backend engineering.
 
 Flixor is an AI-powered movie discovery and streaming platform built with **Gin (Go), React, and MongoDB**. It allows users to explore movies from **legal public sources**, stream content seamlessly, and receive intelligent recommendations based on their preferences. The project focuses on **clean backend architecture, scalable design, and real-world full-stack development practices**.
