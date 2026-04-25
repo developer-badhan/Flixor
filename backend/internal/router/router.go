@@ -125,10 +125,10 @@ func SetupRoutes(
 	interactions.Use(middleware.Auth(jwtSecret))
 	{
 		interactions.GET("/watchlist", interactionHandler.GetWatchlist)
-		interactions.POST("/watchlist/:id", interactionHandler.AddToWatchlist)
-		interactions.DELETE("/watchlist/:id", interactionHandler.RemoveFromWatchlist)
-		interactions.POST("/like/:id", interactionHandler.ReactToMovie)
-		interactions.POST("/dislike/:id", interactionHandler.ReactToMovie)
+		interactions.POST("/watchlist/:movieId", interactionHandler.AddToWatchlist)
+		interactions.DELETE("/watchlist/:movieId", interactionHandler.RemoveFromWatchlist)
+		interactions.POST("/like/:movieId", interactionHandler.ReactToMovie)
+		interactions.POST("/dislike/:movieId", interactionHandler.ReactToMovie)
 		interactions.GET("/history", interactionHandler.GetHistory)
 	}
 
