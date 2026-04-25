@@ -15,16 +15,15 @@ import (
  * It touches five collections but NEVER writes — purely for reads.
 */
 type AnalyticsRepository struct {
-	moviesCol   *mongo.Collection
-	historyCol  *mongo.Collection
-	usersCol    *mongo.Collection
+	moviesCol    *mongo.Collection
+	historyCol   *mongo.Collection
+	usersCol     *mongo.Collection
 	watchlistCol *mongo.Collection
-	likesCol    *mongo.Collection
+	reactionsCol *mongo.Collection // was: likesCol → "likes" (collection never existed)
 }
 
 /**
  * NewAnalyticsRepository creates a new AnalyticsRepository.
- * It takes a MongoDB database connection and returns a pointer to the AnalyticsRepository.
 */
 func NewAnalyticsRepository(db *mongo.Database) *AnalyticsRepository {
 	return &AnalyticsRepository{
@@ -32,7 +31,7 @@ func NewAnalyticsRepository(db *mongo.Database) *AnalyticsRepository {
 		historyCol:   db.Collection("watch_history"),
 		usersCol:     db.Collection("users"),
 		watchlistCol: db.Collection("watchlists"),
-		likesCol:     db.Collection("likes"),
+		reactionsCol: db.Collection("reactions"), // FIX 1: was db.Collection("likes")
 	}
 }
 
@@ -92,59 +91,35 @@ func (r *AnalyticsRepository) GetTrending(ctx context.Context, since time.Time, 
 	defer cancel()
 
 	pipeline := mongo.Pipeline{
-		// Stage 1 — unwind events array
-		{
-			{Key: "$unwind", Value: "$events"},
-		},
-		// Stage 2 — filter by time window
-		{
-			{Key: "$match", Value: bson.M{
-				"events.watched_at": bson.M{"$gte": since},
-			}},
-		},
-		// Stage 3 — group by movie_id
-		{
-			{Key: "$group", Value: bson.M{
-				"_id":             "$events.movie_id",
-				"views_in_window": bson.M{"$sum": 1},
-			}},
-		},
-		// Stage 4 — sort hottest first
-		{
-			{Key: "$sort", Value: bson.D{{Key: "views_in_window", Value: -1}}},
-		},
-		// Stage 5 — trim BEFORE lookup (performance critical)
-		{
-			{Key: "$limit", Value: limit},
-		},
-		// Stage 6 — join to movies collection
-		{
-			{Key: "$lookup", Value: bson.M{
-				"from":         "movies",
-				"localField":   "_id",
-				"foreignField": "_id",
-				"as":           "movie_info",
-			}},
-		},
-		// Stage 7 — flatten the array lookup result
-		{
-			{Key: "$unwind", Value: bson.M{
-				"path":                       "$movie_info",
-				"preserveNullAndEmptyArrays": false,
-			}},
-		},
-		// Stage 8 — project final shape
-		{
-			{Key: "$project", Value: bson.M{
-				"_id":             "$movie_info._id",
-				"title":           "$movie_info.title",
-				"genre":           "$movie_info.genre",
-				"thumbnail":       "$movie_info.thumbnail",
-				"year":            "$movie_info.year",
-				"views_in_window": 1,
-				"total_views":     "$movie_info.view_count",
-			}},
-		},
+		{{Key: "$unwind", Value: "$events"}},
+		{{Key: "$match", Value: bson.M{
+			"events.watched_at": bson.M{"$gte": since},
+		}}},
+		{{Key: "$group", Value: bson.M{
+			"_id":             "$events.movie_id",
+			"views_in_window": bson.M{"$sum": 1},
+		}}},
+		{{Key: "$sort", Value: bson.D{{Key: "views_in_window", Value: -1}}}},
+		{{Key: "$limit", Value: limit}},
+		{{Key: "$lookup", Value: bson.M{
+			"from":         "movies",
+			"localField":   "_id",
+			"foreignField": "_id",
+			"as":           "movie_info",
+		}}},
+		{{Key: "$unwind", Value: bson.M{
+			"path":                       "$movie_info",
+			"preserveNullAndEmptyArrays": false,
+		}}},
+		{{Key: "$project", Value: bson.M{
+			"_id":             "$movie_info._id",
+			"title":           "$movie_info.title",
+			"genre":           "$movie_info.genre",
+			"thumbnail":       "$movie_info.thumbnail",
+			"year":            "$movie_info.year",
+			"views_in_window": 1,
+			"total_views":     "$movie_info.view_count",
+		}}},
 	}
 
 	cursor, err := r.historyCol.Aggregate(ctx, pipeline)
@@ -245,32 +220,19 @@ func (r *AnalyticsRepository) GetTopGenres(ctx context.Context, limit int) ([]Ge
 	defer cancel()
 
 	pipeline := mongo.Pipeline{
-		// Stage 1 — explode genre array into individual documents
-		{
-			{Key: "$unwind", Value: bson.M{
-				"path":                       "$genre",
-				"preserveNullAndEmptyArrays": false,
-			}},
-		},
-		// Stage 2 — aggregate per genre
-		{
-			{Key: "$group", Value: bson.M{
-				"_id":         "$genre",
-				"movie_count": bson.M{"$sum": 1},
-				"total_views": bson.M{"$sum": "$view_count"},
-			}},
-		},
-		// Stage 3 — most popular genre first
-		{
-			{Key: "$sort", Value: bson.D{{Key: "total_views", Value: -1}}},
-		},
-		// Stage 4 — cap at limit
-		{
-			{Key: "$limit", Value: limit},
-		},
+		{{Key: "$unwind", Value: bson.M{
+			"path":                       "$genre",
+			"preserveNullAndEmptyArrays": false,
+		}}},
+		{{Key: "$group", Value: bson.M{
+			"_id":         "$genre",
+			"movie_count": bson.M{"$sum": 1},
+			"total_views": bson.M{"$sum": "$view_count"},
+		}}},
+		{{Key: "$sort", Value: bson.D{{Key: "total_views", Value: -1}}}},
+		{{Key: "$limit", Value: limit}},
 	}
 
-	// Execute the aggregation pipeline
 	cursor, err := r.moviesCol.Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, err
@@ -332,8 +294,16 @@ func (r *AnalyticsRepository) GetPlatformStats(ctx context.Context) (*PlatformSt
 		return nil, err
 	}
 
-	// Count total likes (action = "like")
-	totalLikes, err := r.likesCol.CountDocuments(ctx, bson.M{"action": "like"})
+	/**
+	 * FIX 1: r.likesCol  → r.reactionsCol  ("likes" collection never existed)
+	 * FIX 2: "action":"like" → "type":"like"
+	 * 
+	 * Reaction model (internal/model/interaction.go):
+	 *   Type ReactionType `bson:"type"`   ← the BSON field name is "type"
+	 *   There is NO "action" field anywhere in the schema.
+	 *   Filtering by "action" matched 0 documents — silent, no error.
+	*/
+	totalLikes, err := r.reactionsCol.CountDocuments(ctx, bson.M{"type": "like"})
 	if err != nil {
 		return nil, err
 	}
@@ -353,15 +323,12 @@ func (r *AnalyticsRepository) GetPlatformStats(ctx context.Context) (*PlatformSt
 */
 func (r *AnalyticsRepository) sumViewCounts(ctx context.Context) (int64, error) {
 	pipeline := mongo.Pipeline{
-		{
-			{Key: "$group", Value: bson.M{
-				"_id":         nil, // collapse all documents into one
-				"total_views": bson.M{"$sum": "$view_count"},
-			}},
-		},
+		{{Key: "$group", Value: bson.M{
+			"_id":         nil,
+			"total_views": bson.M{"$sum": "$view_count"},
+		}}},
 	}
 
-	// Execute the aggregation pipeline
 	cursor, err := r.moviesCol.Aggregate(ctx, pipeline)
 	if err != nil {
 		return 0, err
