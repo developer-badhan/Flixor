@@ -1,3 +1,9 @@
+/* App.css - Root styles for the Flixor application. 
+ * ──────────────────────────────────────────────────────────
+ * This file is not used in the production build. 
+ * It is only used in the development build to demonstrate 
+ * the counter component.
+ */
 .counter {
   font-size: 16px;
   padding: 5px 10px;

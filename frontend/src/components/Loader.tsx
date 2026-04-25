@@ -1,5 +1,11 @@
 import React from 'react';
 
+/**
+ * The loader component for the application.
+ * @returns A React component that represents the loader of the application.
+ * @component
+ * @returns {React.FC}
+ */
 const Loader: React.FC = () => {
   return (
     <div className="flex h-screen items-center justify-center bg-flixor-dark">

@@ -5,8 +5,11 @@ import { useUserContext } from '../context/UserContext';
 import { useAuthContext } from '../context/AuthContext';
 import logo from '../assets/logo.png';
 
-// ─── Nav link definitions ─────────────────────────────────────────────────────
-
+/**
+ * The navigation links for the application.
+ * @returns An array of navigation links.
+ * @returns {Array<{ to: string; label: string; icon?: React.ReactNode }>}
+ */
 const NAV_LINKS = [
   { to: '/',               label: 'Home' },
   { to: '/movies',         label: 'Movies' },
@@ -15,8 +18,12 @@ const NAV_LINKS = [
   { to: '/analytics',      label: 'Analytics',   icon: <BarChart2 size={13} /> },
 ];
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
+/**
+ * The navigation component for the application.
+ * @returns A React component that represents the navigation of the application.
+ * @component
+ * @returns {React.FC}
+ */
 const Navbar: React.FC = () => {
   const [isScrolled, setIsScrolled]         = useState(false);
   const [isSearchActive, setIsSearchActive] = useState(false);

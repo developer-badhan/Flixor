@@ -13,6 +13,15 @@ import { Play } from 'lucide-react';
  * and switches to the title fallback div. Same pattern as Thumbnail in MostWatched.
 */
 
+/**
+ * The movie card component for the application.
+ * @param id - The ID of the movie.
+ * @param title - The title of the movie.
+ * @param posterUrl - The URL of the movie poster.
+ * @returns A React component that represents the movie card of the application.
+ * @component
+ * @returns {React.FC<MovieCardProps>}
+ */
 interface MovieCardProps {
   id: string;
   title: string;
