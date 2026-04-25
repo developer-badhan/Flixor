@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 
+/**
+ * A custom hook that fetches data from a given URL.
+ * @param url - The url to fetch data from.
+ * @returns A promise that resolves to the data fetched from the url.
+ * @async
+ * @function useFetch
+ * @returns {Promise<T>}
+ */
 export function useFetch<T>(url: string) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
