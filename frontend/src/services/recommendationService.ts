@@ -1,14 +1,13 @@
 import api from './api';
 import type {
   RecommendRequest,
-  RecommendResponse,
-  EmptyRecommendResponse,
   AnyRecommendResponse,
 } from '../features/recommendation/types/recommendation.types';
 
+
 /**
  * recommendationService
- *
+ * 
  * CRITICAL NOTES:
  *  1. This endpoint uses POST with a JSON body — NOT GET with query params.
  *     The body is fully optional; an empty POST {} triggers hybrid mode with limit 10.

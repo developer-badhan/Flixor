@@ -12,6 +12,11 @@ import type {
 
 // ─── Generic fetch state shape ────────────────────────────────────────────────
 
+/**
+ * Interface for the fetch state.
+ * @interface FetchState
+ * @template T
+ */
 interface FetchState<T> {
   data: T | null;
   loading: boolean;
@@ -23,6 +28,10 @@ interface FetchState<T> {
 /**
  * Hook for GET /analytics/trending
  * Re-fetches automatically when `window` param changes (tab switcher).
+ * @param params - The parameters for the trending hook.
+ * @returns A React hook that returns the trending data.
+ * @function useTrending
+ * @returns {FetchState<TrendingResponse>}
  */
 export function useTrending(params: TrendingParams = {}): FetchState<TrendingResponse> {
   const { window = '7d', limit = 10 } = params;
@@ -52,6 +61,13 @@ export function useTrending(params: TrendingParams = {}): FetchState<TrendingRes
 
 // ─── 2. useMostWatched ────────────────────────────────────────────────────────
 
+/**
+ * Hook for GET /analytics/most-watched
+ * @param params - The parameters for the most watched hook.
+ * @returns A React hook that returns the most watched data.
+ * @function useMostWatched
+ * @returns {FetchState<MostWatchedResponse>}
+ */
 export function useMostWatched(params: TopParams = {}): FetchState<MostWatchedResponse> {
   const { limit = 10 } = params;
   const [data, setData] = useState<MostWatchedResponse | null>(null);
@@ -79,6 +95,13 @@ export function useMostWatched(params: TopParams = {}): FetchState<MostWatchedRe
 }
 
 // ─── 3. useTopGenres ──────────────────────────────────────────────────────────
+/**
+ * Hook for GET /analytics/top-genres
+ * @param params - The parameters for the top genres hook.
+ * @returns A React hook that returns the top genres data.
+ * @function useTopGenres
+ * @returns {FetchState<TopGenresResponse>}
+ */
 
 export function useTopGenres(params: TopParams = {}): FetchState<TopGenresResponse> {
   const { limit = 10 } = params;
@@ -107,6 +130,12 @@ export function useTopGenres(params: TopParams = {}): FetchState<TopGenresRespon
 }
 
 // ─── 4. usePlatformStats ──────────────────────────────────────────────────────
+/**
+ * Hook for GET /analytics/platform-stats
+ * @returns A React hook that returns the platform stats data.
+ * @function usePlatformStats
+ * @returns {FetchState<PlatformStats>}
+ */
 
 export function usePlatformStats(): FetchState<PlatformStats> {
   const [data, setData] = useState<PlatformStats | null>(null);

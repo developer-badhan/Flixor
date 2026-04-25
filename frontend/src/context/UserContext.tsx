@@ -19,6 +19,12 @@ interface UserContextType {
   setUser: React.Dispatch<React.SetStateAction<UserProfile | null>>;
 }
 
+/**
+ * The user context for the application.
+ * @returns A React component that represents the user context of the application.
+ * @component
+ * @returns {React.FC}
+ */
 const UserContext = createContext<UserContextType | null>(null);
 
 /**

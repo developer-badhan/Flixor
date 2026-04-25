@@ -2,6 +2,12 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Navbar from '../Navbar';
 
+/**
+ * The root layout component for the application.
+ * @returns A React component that represents the root layout of the application.
+ * @component
+ * @returns {React.FC}
+ */
 const RootLayout: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-flixor-dark text-white">

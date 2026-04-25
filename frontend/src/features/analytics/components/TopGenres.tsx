@@ -4,8 +4,13 @@ import { BarChart2, Film, Eye } from 'lucide-react';
 import { useTopGenres } from '../../../hooks/useAnalytics';
 import type { GenreStat } from '../types/analytics.types';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
+/**
+ * Formats a number with appropriate suffixes (K, M, etc.).
+ * @param n - The number to format.
+ * @returns The formatted number string.
+ * @function fmt
+ * @returns {string}
+ */
 function fmt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
@@ -47,8 +52,15 @@ const SkeletonRow: React.FC<{ i: number }> = ({ i }) => (
   </div>
 );
 
-// ─── Genre Bar Row ────────────────────────────────────────────────────────────
-
+/**
+ * Interface for the genre row component.
+ * @interface GenreRowProps
+ * @property {GenreStat} genre - The genre to display.
+ * @property {number} max - The maximum number of views.
+ * @property {Metric} metric - The metric to display.
+ * @property {number} index - The index of the genre row.
+ * @returns {React.FC<GenreRowProps>}
+ */
 interface GenreRowProps {
   genre: GenreStat;
   max: number;

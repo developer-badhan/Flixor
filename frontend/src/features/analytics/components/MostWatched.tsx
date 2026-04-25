@@ -5,20 +5,39 @@ import { Link } from 'react-router-dom';
 import { useMostWatched } from '../../../hooks/useAnalytics';
 import type { MostWatchedMovie } from '../types/analytics.types';
 
-//  Helpers Functions 
+/**
+ * Formats a number with appropriate suffixes (K, M, etc.).
+ * @param n - The number to format.
+ * @returns The formatted number string.
+ * @function fmt
+ * @returns {string}
+ */
 function fmt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
   return n.toString();
 }
 
+/**
+ * Calculates the width of the progress bar based on the number of views.
+ * @param views - The number of views.
+ * @param maxViews - The maximum number of views.
+ * @returns The width of the progress bar.
+ * @function barWidth
+ * @returns {string}
+ */
 function barWidth(views: number, maxViews: number): string {
   if (maxViews === 0) return '0%';
   return `${Math.max(4, Math.round((views / maxViews) * 100))}%`;
 }
 
-//  Skeleton: it shows loading state while fetching data
-
+/**
+ * The skeleton component for the most watched section.
+ * @param i - The index of the skeleton row.
+ * @returns A React component that represents the skeleton row of the most watched section.
+ * @component
+ * @returns {React.FC<{ i: number }>}
+ */
 const SkeletonRow: React.FC<{ i: number }> = ({ i }) => (
   <div
     className="flex items-center gap-4 py-3 px-4 animate-pulse"
@@ -77,7 +96,15 @@ const Thumbnail: React.FC<ThumbProps> = ({ thumbnail, title }) => {
   );
 };
 
-//  Movie Row 
+/**
+ * The movie row component for the most watched section.
+ * @param movie - The movie to display.
+ * @param maxViews - The maximum number of views.
+ * @param index - The index of the movie row.
+ * @returns A React component that represents the movie row of the most watched section.
+ * @component
+ * @returns {React.FC<RowProps>}
+ */
 interface RowProps {
   movie: MostWatchedMovie;
   maxViews: number;
